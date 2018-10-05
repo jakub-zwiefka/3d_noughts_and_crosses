@@ -137,8 +137,7 @@ void loop()
 			break;
 		}
 
-		level += 1;
-		if (level > 3)
+		if (level++ > 3)
 		{
 			level = 0;
 		}
