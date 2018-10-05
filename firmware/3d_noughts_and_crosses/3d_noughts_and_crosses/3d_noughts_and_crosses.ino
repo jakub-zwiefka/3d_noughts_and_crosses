@@ -39,16 +39,16 @@ byte buff0 = 0x00;
 byte buff1 = 0x00;
 word buff = 0x0000;
 unsigned int previousMillis = 0;
-//                    RED  GREEN  BLUE
-word cube[4][3] = { { 0x1000,0x0100,0x0010},		// LVL0
-					{ 0x0100,0x0010,0x0001},	// LVL1
-					{ 0x0010,0x0001,0x1000},	// LVL2
-					{ 0x0001,0x1000,0x0100} };	// LVL3
+//           COLUMNS:  red     green   blue         LEVEL:
+word cube[4][3] = { { 0x1000, 0x0100, 0x0010},		// 0
+					{ 0x0100, 0x0010, 0x0001},		// 1
+					{ 0x0010, 0x0001, 0x1000},		// 2
+					{ 0x0001, 0x1000, 0x0100} };	// 3
 
-////////// DECLARATIONS
+////////// FUNCTION DECLARATIONS
 void setCollumns(void);
 
-//The setup function is called once at startup of the sketch
+////////// INITIAL ACTIONS
 void setup()
 {
 	pinMode(D0Pin, OUTPUT);
@@ -72,8 +72,8 @@ void setup()
 	pinMode(B0Pin, OUTPUT);
 	pinMode(B1Pin, OUTPUT);
 
-	//  pinMode(TXPin, OUTPUT);
-	//  pinMode(RXPin, INPUT);
+//	pinMode(TXPin, OUTPUT);
+//	pinMode(RXPin, INPUT);
 
 	digitalWrite(L0Pin, LOW);
 	digitalWrite(L1Pin, LOW);
@@ -97,7 +97,7 @@ void setup()
 	digitalWrite(D7Pin, LOW);
 }
 
-// The loop function is called in an endless loop
+////////// CONTINUOUS ACTIONS
 void loop()
 {
 	unsigned long currentMillis = millis();
