@@ -105,8 +105,12 @@
 uint32_t currentMillis;
 uint32_t previousMillis = 0;
 uint8_t layer = 0x00;
+bool layer0Changed = false;
+bool layer1Changed = false;
+bool layer2Changed = false;
+bool layer3Changed = false;
 uint16_t buffer = 0x0000;
-//                 Columns:  red     green   blue        Level:
+//                 Columns:  red     green   blue       Layer:
 uint16_t ledcube[4][3] = { { 0x1000, 0x0100, 0x0010},	// 0
                            { 0x0100, 0x0010, 0x0001},   // 1
                            { 0x0010, 0x0001, 0x1000},	// 2
@@ -169,36 +173,47 @@ void loop()
 
     if (currentMillis - previousMillis >= period)
     {
-        
-
         previousMillis = currentMillis;
-
         switch (layer)
         {
         case 0:
-            // Deactivate previous layer and activate current
-            setColumns();
-            activateLayer(L3Port, L3PPin);
-            deactivateLayer(L0Port, L0PPin);
-            
+            deactivateLayer(L3Port, L3PPin);
+            activateLayer(L0Port, L0PPin);
+            if (layer1Changed)
+            {
+                setLayer(layer+1);
+                layer0Changed = false;
+            }
             break;
 
         case 1:
-            setColumns();
-            activateLayer(L0Port, L0PPin);
-            deactivateLayer(L1Port, L1PPin);
+            deactivateLayer(L0Port, L0PPin);
+            activateLayer(L1Port, L1PPin);
+            if (layer2Changed)
+            {
+                setLayer(layer+1);
+                layer1Changed = false;
+            }
             break;
 
         case 2:
-            setColumns();
-            activateLayer(L1Port, L1PPin);
-            deactivateLayer(L2Port, L2PPin);
+            deactivateLayer(L1Port, L1PPin);
+            activateLayer(L2Port, L2PPin);
+            if (layer3Changed)
+            {
+                setLayer(layer+1);
+                layer2Changed = false;
+            }
             break;
 
         case 3:
-            setColumns();
-            activateLayer(L2Port, L2PPin);
-            deactivateLayer(L3Port, L3PPin);
+            deactivateLayer(L2Port, L2PPin);
+            activateLayer(L3Port, L3PPin);
+            if (layer0Changed)
+            {
+                setLayer(layer+1);
+                layer3Changed = false;
+            }
             break;
 
         default:
@@ -219,14 +234,24 @@ inline uint8_t modifyBit(uint8_t operand, uint8_t pos, uint8_t bit)
     return operand = (operand & ~(1 << pos)) | ((bit << pos)&(1 << pos));
 }
 
-inline  uint8_t activateLayer(uint8_t operand, uint8_t pos)
+inline  uint8_t setBit(uint8_t operand, uint8_t pos)
 {
     return operand |= (1 << pos);
 }
 
-inline  uint8_t deactivateLayer(uint8_t operand, uint8_t pos)
+inline  uint8_t clrBit(uint8_t operand, uint8_t pos)
 {
     return operand &= !(1 << pos);
+}
+ 
+inline uint8_t activateLayer(uint8_t operand, uint8_t pos)
+{
+    return setBit(operand, pos);
+}
+
+inline uint8_t deactivateLayer(uint8_t operand, uint8_t pos)
+{
+    return clrBit(operand, pos);
 }
 
 void setBus(uint8_t buffer)
@@ -241,7 +266,7 @@ void setBus(uint8_t buffer)
     modifyBit(BUS7Port, BUS7PPin, ((buffer >> 7) & 0xFE)); 
 }
 
-void setColumns(void)
+uint8_t setLayer(uint8_t layer)
 {
-    
+    return;
 }
