@@ -123,7 +123,7 @@
   </ImportGroup>
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties debug.view.AnalogPins="1" VM.DebugVariablesWindow.ColumnVisibleVariableValueBinary="0" VM.DebugVariablesWindow.ColumnVisibleVariableTimeStamp="0" arduino.upload.port="COM7" debug.view.DigitalPins="1" VM.DebugVariablesWindow.ColumnVisibleBreakPointName="0" VM.DebugVariablesWindow.ColumnVisibleFunctionName="0" />
+      <UserProperties debug.view.AnalogPins="" VM.DebugVariablesWindow.ColumnVisibleVariableValueBinary="0" VM.DebugVariablesWindow.ColumnVisibleVariableTimeStamp="0" arduino.upload.port="COM5" debug.view.DigitalPins="" VM.DebugVariablesWindow.ColumnVisibleBreakPointName="0" VM.DebugVariablesWindow.ColumnVisibleFunctionName="0" />
     </VisualStudio>
   </ProjectExtensions>
 </Project>
