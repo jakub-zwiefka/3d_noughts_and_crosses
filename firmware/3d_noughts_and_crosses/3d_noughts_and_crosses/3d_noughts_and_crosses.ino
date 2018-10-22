@@ -131,9 +131,9 @@
 uint32_t current_micros;
 uint32_t previous_micros = 0;
 uint8_t active_layer = 0x00;
-uint8_t column_to_set = 0;
-uint8_t layer_to_set = 0;
-uint8_t color_to_set = 0;
+uint8_t next_column = 0;
+uint8_t next_layer = 0;
+uint8_t next_color = 0;
 
 //                 Columns:  red:    green:  blue:      Layer:
 uint16_t led_cube[4][3] = { {0x0000, 0x0000, 0x0000},	// 0
@@ -189,7 +189,7 @@ void setup()
     digitalWrite(B0Pin, LOW);
     digitalWrite(B1Pin, LOW);
 
-    Serial.begin(115200);
+    Serial.begin(9600);
 }
 
 
@@ -201,7 +201,6 @@ void loop()
     if (current_micros - previous_micros >= period)
     {
         previous_micros = current_micros;
-        subperiod++;
         #ifndef hide
 
         switch (active_layer)
@@ -334,7 +333,6 @@ void updateLedCube(uint8_t layer, uint8_t column, uint8_t color)
     led_cube[layer][color] |= 1 << column;
 }
 
-
 bool isAvailable(uint8_t layer, uint8_t column)
 {   
     uint32_t led;
@@ -349,36 +347,57 @@ bool isAvailable(uint8_t layer, uint8_t column)
     return true;
 }
 
+void clearLedCube(void)
+{
+    for (int layer = 0; layer < 4; layer++)
+    {
+        for (int color = 0; color < 3; color++)
+        {
+            led_cube[layer][color] = 0x0000;
+        }
+    }
+}
+
 void testLedCube(void)
 {
     if (subperiod > 10)
-    {
-        if (isAvailable(layer_to_set, column_to_set))
+    {   
+        subperiod = 0;
+
+        if ((next_column == 0) && (next_layer == 0))
         {
-            updateLedCube(layer_to_set, column_to_set, color_to_set);
+            clearLedCube();
         }
-        column_to_set++;
-        if (layer_to_set == 4)
+
+        if (isAvailable(next_layer, next_column))
         {
-            layer_to_set = 0;
-            color_to_set++;
-            for (int i = 0; i < 4; i++)
+            updateLedCube(next_layer, next_column, next_color);
+        }
+
+        next_column++;
+        if (next_column > 15)
+        {
+            next_column = 0;
+            next_layer++;
+            if (next_layer > 3)
             {
-                for (int j = 0; j < 3; j++)
+                next_layer = 0;
+                next_color++;
+                if (next_color > 2)
                 {
-                    led_cube[i][j] = 0x0000;
+                    next_color=0;
                 }
             }
         }
-        if (column_to_set == 16)
-        {
-            column_to_set = 0;
-            layer_to_set++;
-        }
-        if (color_to_set == 3)
-        {
-            color_to_set = 0;
-        }
-        subperiod = 0;
     }
+    subperiod++;
+}
+
+bool checkWinCondition(uint8_t color)
+{
+    for (int layer = 0; layer < 4; layer++)
+    {
+        led_cube[layer][color] = 0x0000;
+    }
+    return false;
 }
