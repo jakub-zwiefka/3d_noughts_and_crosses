@@ -99,40 +99,24 @@
 #endif // PORTS
 
 //// Constants
-#define RED 1
-#define GREEN 2
-#define BLUE 3
+#define RED 0
+#define GREEN 1
+#define BLUE 2
 
 #define LAYER0 0
 #define LAYER1 1
 #define LAYER2 2
 #define LAYER3 3
 
-#define COLUMN0 0
-#define COLUMN1 1
-#define COLUMN2 2
-#define COLUMN3 3
-#define COLUMN4 4
-#define COLUMN5 5
-#define COLUMN6 6
-#define COLUMN7 7
-#define COLUMN8 8
-#define COLUMN9 9
-#define COLUMN10 10
-#define COLUMN11 11
-#define COLUMN12 12
-#define COLUMN13 13
-#define COLUMN14 14
-#define COLUMN15 15
-
 #define LAYERS_NUM 4
 #define PLAYERS_NUM 3
 
-#define EXIT_GAME_COMMAND 0x00
-#define RED_WON_COMMAND 0x01
-#define GREEN_WON_COMMAND 0x02
-#define BLUE_WON_COMMAND 0x03
-#define INCORRECT_MOVE_COMMAND 0x04
+#define EXIT_GAME_MSG 0x00
+#define RED_WON_MSG 0x01
+#define GREEN_WON_MSG 0x02
+#define BLUE_WON_MSG 0x03
+#define CORRECT_MOVE_MSG 0x04
+#define INCORRECT_MOVE_MSG 0x05
 
 ////////// STRUCTURES
 struct ledcube_point {
@@ -151,17 +135,18 @@ uint8_t command_to_transmit;
 uint16_t subperiod = 0;
 bool transmit_trigger = false;
 bool receive_trigger = false;
+bool test_ended = false;
 
 ledcube_point led_to_set = {
     0x00, // color
     0x00, // layer
     0x00, // column
 };
-//                 Columns:  red:    green:  blue:      Layer:
-uint16_t ledcube[4][3] = { {0x0000, 0x0000, 0x0000},	// 0
-                           {0x0000, 0x0000, 0x0000},    // 1
-                           {0x0000, 0x0000, 0x0000},	// 2
-                           {0x0000, 0x0000, 0x0000} };	// 3
+//                         Groups of columns:  red:    green:  blue:      Layer:
+uint16_t ledcube[LAYERS_NUM][PLAYERS_NUM] = { {0x0000, 0x0000, 0x0000},	  // 0
+                                              {0x0000, 0x0000, 0x0000},   // 1
+                                              {0x0000, 0x0000, 0x0000},   // 2
+                                              {0x0000, 0x0000, 0x0000} }; // 3
 
 
 ////////// INITIALIZATON
@@ -215,15 +200,25 @@ void loop()
 {
     current_micros = micros();
 
-    receive();
-
-    react();
+    if (test_ended)
+    {
+        receive();
+        react();
+        transmit();
+    }
+    else
+    {
+        testLedcube();
+        if (test_ended)
+        {
+            clearLedcube();
+        }
+    }
 
     if (current_micros - previous_micros >= period)
     {
         previous_micros = current_micros;
 
-#ifndef hide
         switch (current_layer)
         {
         case LAYER0:
@@ -258,75 +253,71 @@ void loop()
         {
             current_layer = 0;
         }
-
-#endif // !hide
     }
-
-    transmit();
 }
 
 ////////// FUNCTION DEFINITIONS
 void modifyPortBit(volatile uint8_t *port, uint8_t bit_pos, uint8_t val)
 {
-    *port = (*port & ~((uint8_t)1 << bit_pos)) | ((val << bit_pos)&((uint8_t)1 << bit_pos));
+    *port = (*port & ~(1 << bit_pos)) | ((val << bit_pos)&(1 << bit_pos));
 }
 
 void setPortBit(volatile uint8_t *port, uint8_t bit_pos)
 {
-    *port |= ((uint8_t)1 << bit_pos);
+    *port |= (1 << bit_pos);
 }
 
 void clrPortBit(volatile uint8_t *port, uint8_t bit_pos)
 {
-    *port &= !((uint8_t)1 << bit_pos);
+    *port &= !(1 << bit_pos);
 }
 
 void setBus(uint8_t buffer)
 {
-    modifyPortBit(&BUS0Port, BUS0PPin, (buffer & (uint8_t)1));
-    modifyPortBit(&BUS1Port, BUS1PPin, ((buffer >> (uint8_t)1) & (uint8_t)1));
-    modifyPortBit(&BUS2Port, BUS2PPin, ((buffer >> (uint8_t)2) & (uint8_t)1));
-    modifyPortBit(&BUS3Port, BUS3PPin, ((buffer >> (uint8_t)3) & (uint8_t)1));
-    modifyPortBit(&BUS4Port, BUS4PPin, ((buffer >> (uint8_t)4) & (uint8_t)1));
-    modifyPortBit(&BUS5Port, BUS5PPin, ((buffer >> (uint8_t)5) & (uint8_t)1));
-    modifyPortBit(&BUS6Port, BUS6PPin, ((buffer >> (uint8_t)6) & (uint8_t)1));
-    modifyPortBit(&BUS7Port, BUS7PPin, ((buffer >> (uint8_t)7) & (uint8_t)1));
+    modifyPortBit(&BUS0Port, BUS0PPin, (buffer & 0x01));
+    modifyPortBit(&BUS1Port, BUS1PPin, ((buffer >> 1) & 0x01));
+    modifyPortBit(&BUS2Port, BUS2PPin, ((buffer >> 2) & 0x01));
+    modifyPortBit(&BUS3Port, BUS3PPin, ((buffer >> 3) & 0x01));
+    modifyPortBit(&BUS4Port, BUS4PPin, ((buffer >> 4) & 0x01));
+    modifyPortBit(&BUS5Port, BUS5PPin, ((buffer >> 5) & 0x01));
+    modifyPortBit(&BUS6Port, BUS6PPin, ((buffer >> 6) & 0x01));
+    modifyPortBit(&BUS7Port, BUS7PPin, ((buffer >> 7) & 0x01));
 }
 
 void setLayer(uint8_t layer)
 {
     modifyPortBit(&R0Port, R0PPin, HIGH);
-    setBus(ledcube[layer][RED] & (uint8_t)0xFF);
+    setBus(ledcube[layer][RED] & 0xFF);
     modifyPortBit(&R0Port, R0PPin, LOW);
     modifyPortBit(&R1Port, R1PPin, HIGH);
-    setBus(ledcube[layer][RED] >> (uint8_t)8);
+    setBus(ledcube[layer][RED] >> 8);
     modifyPortBit(&R1Port, R1PPin, LOW);
     modifyPortBit(&G0Port, G0PPin, HIGH);
-    setBus(ledcube[layer][GREEN] & (uint8_t)0xFF);
+    setBus(ledcube[layer][GREEN] & 0xFF);
     modifyPortBit(&G0Port, G0PPin, LOW);
     modifyPortBit(&G1Port, G1PPin, HIGH);
-    setBus(ledcube[layer][GREEN] >> (uint8_t)8);
+    setBus(ledcube[layer][GREEN] >> 8);
     modifyPortBit(&G1Port, G1PPin, LOW);
     modifyPortBit(&B0Port, B0PPin, HIGH);
-    setBus(ledcube[layer][BLUE] & (uint8_t)0xFF);
+    setBus(ledcube[layer][BLUE] & 0xFF);
     modifyPortBit(&B0Port, B0PPin, LOW);
     modifyPortBit(&B1Port, B1PPin, HIGH);
-    setBus(ledcube[layer][BLUE] >> (uint8_t)8);
+    setBus(ledcube[layer][BLUE] >> 8);
     modifyPortBit(&B1Port, B1PPin, LOW);
 }
 
 void setLed(uint8_t color, uint8_t layer, uint8_t column)
 {
-    ledcube[layer][color] |= (uint8_t)0x0001 << column;
+    ledcube[layer][color] |= 0x0001 << column;
 }
 
 bool isAvailable(uint8_t layer, uint8_t column)
 {
-    uint16_t led;
+    uint16_t layer_of_color;
     for (uint8_t color = 0; color < 3; color++)
     {
-        uint16_t layer_of_color = ledcube[layer][color];
-        if ((led >> column) & (uint16_t)0x0001 == (uint16_t)0x0001)
+        layer_of_color = ledcube[layer][color];
+        if ((layer_of_color >> column) & 0x0001 == 0x0001)
         {
             return false;
         }
@@ -334,26 +325,26 @@ bool isAvailable(uint8_t layer, uint8_t column)
     return true;
 }
 
-void clearLedCube(void)
+void clearLedcube(void)
 {
     for (uint8_t layer = 0; layer < 4; layer++)
     {
         for (uint8_t color = 0; color < 3; color++)
         {
-            ledcube[layer][color] = (uint16_t)0x0000;
+            ledcube[layer][color] = 0x0000;
         }
     }
 }
 
-void testLedCube(void)
+void testLedcube(void)
 {
-    if (subperiod > 10)
+    if (subperiod > 2000)
     {
         subperiod = 0;
 
         if ((led_to_set.column == 0) && (led_to_set.layer == 0))
         {
-            clearLedCube();
+            clearLedcube();
         }
 
         if (isAvailable(led_to_set.layer, led_to_set.column))
@@ -373,6 +364,7 @@ void testLedCube(void)
                 if (led_to_set.color > 2)
                 {
                     led_to_set.color = 0;
+                    test_ended = true;
                 }
             }
         }
@@ -380,7 +372,7 @@ void testLedCube(void)
     subperiod++;
 }
 
-bool isWinning(uint8_t color)
+bool isWinner(uint8_t color)
 {
     //// 1) In horizontal layer cases
     for (uint8_t hor_layer = 0; hor_layer < 4; hor_layer++)
@@ -422,41 +414,19 @@ bool isWinning(uint8_t color)
 
     }
 
-    //// 2) In vertical layer cases
-    for (uint8_t vert_layer = 0; vert_layer < 4; vert_layer++)
-    {
-        for (uint8_t pos = 0; pos < 4; pos++)
-        {
-            if (ledcube[pos][color] != 0x0001 << (4 * vert_layer))
-            {
-                return false;
-            }
-        }
-    }
+    ////// 2) In vertical layer cases
+    //for (uint8_t vert_layer = 0; vert_layer < 4; vert_layer++)
+    //{
+    //    for (uint8_t pos = 0; pos < 4; pos++)
+    //    {
+    //        if (ledcube[pos][color] != 0x0001 << (4 * vert_layer))
+    //        {
+    //            return false;
+    //        }
+    //    }
+    //}
 
     return false;
-}
-
-void checkWinningCondition(uint8_t color)
-{
-    if (isWinning(color))
-    {
-        switch (color)
-        {
-        case RED:
-            command_to_transmit = RED_WON_COMMAND;
-            break;
-        case GREEN:
-            command_to_transmit = GREEN_WON_COMMAND;
-            break;
-        case BLUE:
-            command_to_transmit = BLUE_WON_COMMAND;
-            break;
-        default:
-            break;
-        }
-        transmit_trigger = true;
-    }
 }
 
 void receive(void)
@@ -489,17 +459,35 @@ void react(void)
             if (isAvailable(led_to_set.layer, led_to_set.column))
             {
                 setLed(led_to_set.color, led_to_set.layer, led_to_set.column);
-                //checkWinningCondition(led_to_set.color);
+                command_to_transmit = CORRECT_MOVE_MSG;
+                if (isWinner(led_to_set.color))
+                {
+                    switch (led_to_set.color)
+                    {
+                    case RED:
+                        command_to_transmit = RED_WON_MSG;
+                        break;
+                    case GREEN:
+                        command_to_transmit = GREEN_WON_MSG;
+                        break;
+                    case BLUE:
+                        command_to_transmit = BLUE_WON_MSG;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                transmit_trigger = true;
             }
             else
             {
-                command_to_transmit = INCORRECT_MOVE_COMMAND;
+                command_to_transmit = INCORRECT_MOVE_MSG;
                 transmit_trigger = true;
             }
         }
-        else if (received == EXIT_GAME_COMMAND)
+        else if (received == EXIT_GAME_MSG)
         {
-            clearLedCube();
+            clearLedcube();
         }
         receive_trigger = false;
     }
