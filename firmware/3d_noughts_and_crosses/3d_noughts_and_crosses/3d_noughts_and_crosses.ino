@@ -6,10 +6,9 @@
 
 // #define hide
 
-
+///////////////////////////////////////////////////////////////////////////////
 ////////// MACROS
-//// Time constants
-#define period 2500  // period at which to multiplex ledcube layers (us) // f=400Hz
+///////////////////////////////////////////////////////////////////////////////
 
 //// Arduino pins mapping
 #define ARDUINO_PINS
@@ -41,8 +40,8 @@
 #endif // ARDUINO_PINS
 
 //// AT32U4 port pins mapping
-#define PORT_PINS
-#ifdef PORT_PINS
+#define ATMEGA_PINS
+#ifdef ATMEGA_PINS
 // AT32U4 port pins to configure bus setting selected group of ledcube columns
 #define BUS0PPin PORTD6	
 #define BUS1PPin PORTB7	
@@ -69,9 +68,9 @@
 #define RXPPin PORTD2; 
 #endif // PORT_PINS
 
-//// AT32U4 ports of every pin
-#define PORTS
-#ifdef PORTS
+//// AT32U4 ports of every pin mapped
+#define ATMEGA_PORTS
+#ifdef ATMEGA_PORTS
 // AT32U4 ports to configure bus setting selected group of ledcube columns
 #define BUS0Port PORTD	
 #define BUS1Port PORTB	
@@ -98,50 +97,98 @@
 #define RXPort PORTD; 
 #endif // PORTS
 
-//// Constants
-#define RED 0
-#define GREEN 1
-#define BLUE 2
+//// Game result constants
+#define RED_WON 0
+#define GREEN_WON 1
+#define BLUE_WON 2
+#define DRAW 3
 
+//// Ledcube constraction constants
+#define LEDCUBE_SIZE 4
+#define LAYERS_NUM LEDCUBE_SIZE
+#define COLUMNS_NUM LEDCUBE_SIZE * LEDCUBE_SIZE 
+#define COLORS_NUM 3
+#define PLAYERS_NUM 3
+
+//// LayerN constants
 #define LAYER0 0
 #define LAYER1 1
 #define LAYER2 2
 #define LAYER3 3
 
-#define LAYERS_NUM 4
-#define PLAYERS_NUM 3
+//// Color constants
+#define RED 0
+#define GREEN 1
+#define BLUE 2
 
-#define EXIT_GAME_MSG 0x00
+//// Time constants
+#define PERIOD 2500  // period at which to multiplex ledcube layers (us) // f=400Hz
+#define TEST_SUBPERIOD 3500  // period of setting on next leds in testLedcube()
+#define ANIM_SUBPERIOD 8000  // period of setting on next layers in animations presenting winners
+
+//// Messages constants
+//                   Player:Red/Green/Blue   Layer  Column
+// (*) MOVE MSG     ->      {01}/{10}/{11} + {--} + {----} (b)
+//     OTHER MSGs   ->      {00} + {------} (b)
+// Receivable messages
+// MOVE_MSG (*)
+#define INIT_GAME_MSG 0x00
+// Transmittable messagaes
 #define RED_WON_MSG 0x01
 #define GREEN_WON_MSG 0x02
 #define BLUE_WON_MSG 0x03
-#define CORRECT_MOVE_MSG 0x04
-#define INCORRECT_MOVE_MSG 0x05
+#define DRAW_MSG 0x04
+#define CORRECT_MOVE_MSG 0x05
+#define INCORRECT_MOVE_MSG 0x06
+#define READY_MSG 0x07
 
+///////////////////////////////////////////////////////////////////////////////
 ////////// STRUCTURES
+///////////////////////////////////////////////////////////////////////////////
 struct ledcube_point {
     uint8_t color;
     uint8_t layer;
     uint8_t column;
 };
 
-
+///////////////////////////////////////////////////////////////////////////////
 ////////// VARIABLES
+///////////////////////////////////////////////////////////////////////////////
+// Multiplexing
 uint32_t current_micros;
 uint32_t previous_micros = 0;
 uint8_t current_layer = 0;
-uint8_t received;
-uint8_t command_to_transmit;
-uint16_t subperiod = 0;
-bool transmit_trigger = false;
-bool receive_trigger = false;
-bool test_ended = false;
 
+// Animations
+uint16_t animation_counter1 = 0;
+uint16_t animation_counter2 = 0;
+uint8_t animation_iterator1 = 0;
+uint8_t animation_iterator2 = 0;
+bool go_up = true;
+
+// Communication
+uint8_t received;
+uint8_t message_to_transmit;
+
+// Gameplay
+uint8_t moves_left = LAYERS_NUM * COLUMNS_NUM;
+uint8_t game_result;
+
+// Control
+bool reset_trigger = false;
+bool transmit_trigger = false;
+bool react_trigger = false;
+bool test_ended = false;
+bool game_ended = false;
+
+// Next LED to be set in ledcube[][] table with setLed() function
 ledcube_point led_to_set = {
     0x00, // color
     0x00, // layer
     0x00, // column
 };
+
+// Table of 12 Words in which is held state of LEDs in each layer and color of ledcube
 //                         Groups of columns:  red:    green:  blue:      Layer:
 uint16_t ledcube[LAYERS_NUM][PLAYERS_NUM] = { {0x0000, 0x0000, 0x0000},	  // 0
                                               {0x0000, 0x0000, 0x0000},   // 1
@@ -149,7 +196,11 @@ uint16_t ledcube[LAYERS_NUM][PLAYERS_NUM] = { {0x0000, 0x0000, 0x0000},	  // 0
                                               {0x0000, 0x0000, 0x0000} }; // 3
 
 
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 ////////// INITIALIZATON
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 void setup()
 {
     pinMode(BUS0Pin, OUTPUT);
@@ -190,38 +241,63 @@ void setup()
 
     digitalWrite(LED_BUILTIN, LOW);
 
-    Serial.begin(9600);
     Serial1.begin(9600);
 }
 
 
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 ////////// TASKS
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
+//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 void loop()
 {
     current_micros = micros();
 
-    if (test_ended)
+    // Reset procedure
+    if (reset_trigger)
     {
-        receive();
-        react();
-        transmit();
-    }
-    else
-    {
-        testLedcube();
-        if (test_ended)
-        {
-            clearLedcube();
-        }
+        resetLedcube();
+        reset_trigger = false;
     }
 
-    if (current_micros - previous_micros >= period)
+    // Initial testing procedure
+    if (!test_ended)
+    {
+        testLedcube(); // Test ledcube after power on
+    }
+
+    // Receiving procedure
+    receive(); // Check for new messages and trigger reacting to new ones
+
+    // Reacting to received procedure
+    if (react_trigger)
+    {
+        react();
+        react_trigger = false; // Stop reacting till message received
+    }
+
+    // Transmitting of reaction outcome procedure
+    if (transmit_trigger)
+    {
+        transmit();
+        transmit_trigger = false; // Stop transmitting till needed
+    }
+
+    // Present game result procedure
+    if (game_ended)
+    {
+        presentGameResult(); // Visualize on ledcube result of game
+    }
+
+    // Driving ledcube
+    if (current_micros - previous_micros >= PERIOD)
     {
         previous_micros = current_micros;
 
         switch (current_layer)
         {
-        case LAYER0:
+        case LAYER0: 
             clrPortBit(&L3Port, L3PPin);
             setLayer(current_layer);
             setPortBit(&L0Port, L0PPin);
@@ -256,22 +332,26 @@ void loop()
     }
 }
 
-////////// FUNCTION DEFINITIONS
-void modifyPortBit(volatile uint8_t *port, uint8_t bit_pos, uint8_t val)
+////////// FUNCTIONS
+// Set given port pin to given value (0 or 1)
+void modifyPortBit(volatile uint8_t *port, uint8_t pin, uint8_t val)
 {
-    *port = (*port & ~(1 << bit_pos)) | ((val << bit_pos)&(1 << bit_pos));
+    *port = (*port & ~(1 << pin)) | ((val << pin)&(1 << pin));
 }
 
-void setPortBit(volatile uint8_t *port, uint8_t bit_pos)
+// Set on given port pin
+void setPortBit(volatile uint8_t *port, uint8_t pin)
 {
-    *port |= (1 << bit_pos);
+    *port |= (1 << pin);
 }
 
-void clrPortBit(volatile uint8_t *port, uint8_t bit_pos)
+// Set off given port pin
+void clrPortBit(volatile uint8_t *port, uint8_t pin)
 {
-    *port &= !(1 << bit_pos);
+    *port &= !(1 << pin);
 }
 
+// Set Bus of ledcube driver with given 8 bits buffer
 void setBus(uint8_t buffer)
 {
     modifyPortBit(&BUS0Port, BUS0PPin, (buffer & 0x01));
@@ -284,6 +364,7 @@ void setBus(uint8_t buffer)
     modifyPortBit(&BUS7Port, BUS7PPin, ((buffer >> 7) & 0x01));
 }
 
+// Set given ledcube layer with last state of ledcube[][] table
 void setLayer(uint8_t layer)
 {
     modifyPortBit(&R0Port, R0PPin, HIGH);
@@ -306,11 +387,13 @@ void setLayer(uint8_t layer)
     modifyPortBit(&B1Port, B1PPin, LOW);
 }
 
+// Set on given LED
 void setLed(uint8_t color, uint8_t layer, uint8_t column)
 {
     ledcube[layer][color] |= 0x0001 << column;
 }
 
+// Check whether given given RGB LED has any Color set on
 bool isAvailable(uint8_t layer, uint8_t column)
 {
     uint16_t layer_of_color;
@@ -325,6 +408,7 @@ bool isAvailable(uint8_t layer, uint8_t column)
     return true;
 }
 
+// Set all LEDs off
 void clearLedcube(void)
 {
     for (uint8_t layer = 0; layer < 4; layer++)
@@ -336,11 +420,26 @@ void clearLedcube(void)
     }
 }
 
+// Reset ledcube driver and the game, leave testing state
+void resetLedcube(void)
+{
+    clearLedcube();
+    animation_counter1 = 0;
+    animation_counter2 = 0;
+    animation_iterator1 = 0;
+    animation_iterator2 = 0;
+    go_up = true;
+    test_ended = true;
+    game_ended = false;
+    moves_left = LAYERS_NUM * COLUMNS_NUM;
+}
+
+// Test condition of LEDs after power on
 void testLedcube(void)
 {
-    if (subperiod > 2000)
+    if (animation_counter1 > TEST_SUBPERIOD)
     {
-        subperiod = 0;
+        animation_counter1 = 0;
 
         if ((led_to_set.column == 0) && (led_to_set.layer == 0))
         {
@@ -364,131 +463,393 @@ void testLedcube(void)
                 if (led_to_set.color > 2)
                 {
                     led_to_set.color = 0;
-                    test_ended = true;
                 }
             }
         }
     }
-    subperiod++;
+    animation_counter1++;
 }
 
+// Check if player with given color has won the game
 bool isWinner(uint8_t color)
-{
-    //// 1) In horizontal layer cases
-    for (uint8_t hor_layer = 0; hor_layer < 4; hor_layer++)
+{   
+    uint16_t mask1;
+    uint16_t mask2;
+    uint16_t mask3;
+    uint16_t mask4;
+    bool found_gap1;
+    bool found_gap2;
+    bool found_gap3;
+    bool found_gap4;
+    //// (*1) MAPPING OF LEDCUBE LEDS:
+    /* Y: 3  2  1  0
+        --------------  X:
+        | O  O  O  O |  0
+        | O  O  O  O |  1
+        | O  O  O  O |  2
+        | O  O  O  O |  3
+        |   <LOGO>   |
+        --------------
+        All leds in each layer for every color are represented by 1 bit
+        in Word (2 Bytes) to which they are mapped in such a way that 
+        LED's bit has a position calculated as POS = X + 4*Y accordingly
+        to the shown ledcube's layout shown above (*1).
+    */
+    //// WIN CASES:
+    for (uint8_t layer = 0; layer < LAYERS_NUM; layer++)
     {
-        for (uint8_t pos = 0; pos < 4; pos++)
+        for (uint8_t row = 0; row < LEDCUBE_SIZE; row++)
         {
-            // Cases: Horizontal
-            //   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   1 1 1 1
-            //   0 0 0 0   ||   0 0 0 0   ||   1 1 1 1   ||   0 0 0 0
-            //   0 0 0 0   ||   1 1 1 1   ||   0 0 0 0   ||   0 0 0 0
+            // Vertical lines in horizontal planes
+            // (16 cases)
+            // (bird's eye view)
+            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
+            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
+            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
+            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
+            mask1 = 0x000F << (4 * row);
+            if ((ledcube[layer][color] & mask1) == mask1)
+            {
+                mask2 = 0;
+                return true;
+            }
+            // Horizontal lines in horizontal planes
+            // (16 cases)
+            // (bird's eye view)
             //   1 1 1 1   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0 
-            if (ledcube[hor_layer][color] == 0x000F << (4 * pos))
+            //   0 0 0 0   ||   1 1 1 1   ||   0 0 0 0   ||   0 0 0 0
+            //   0 0 0 0   ||   0 0 0 0   ||   1 1 1 1   ||   0 0 0 0
+            //   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   1 1 1 1
+            mask1 = 0x1111 << row;
+            if ((ledcube[layer][color] & mask1) == mask1)
             {
-                return true;
-            }
-            // Cases: Vertical
-            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
-            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
-            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
-            //   0 0 0 1   ||   0 0 1 0   ||   0 1 0 0   ||   1 0 0 0
-            if (ledcube[hor_layer][color] == 0x1111 << pos)
-            {
+                mask1 = 0;
                 return true;
             }
         }
-        // Cases: Crosswise
-        //   1 0 0 0   ||   0 0 0 1
-        //   0 1 0 0   ||   0 0 1 0
-        //   0 0 1 0   ||   0 1 0 0
-        //   0 0 0 1   ||   1 0 0 0
-        if (ledcube[hor_layer][color] == 0x1248)
+        // Crosswise lines in horizontal planes
+        // (8 cases)
+        // (bird's eye view)
+        //  0 0 0 1   ||   1 0 0 0
+        //  0 0 1 0   ||   0 1 0 0
+        //  0 1 0 0   ||   0 0 1 0
+        //  1 0 0 0   ||   0 0 0 1
+        mask1 = 0x1248;
+        if ((ledcube[layer][color] & mask1) == mask1)
         {
+            mask1 = 0;
             return true;
         }
-        if (ledcube[hor_layer][color] == 0x8421)
+        mask1 = 0x8421;
+        if ((ledcube[layer][color] & mask1) == mask1)
         {
+            mask1 = 0;
             return true;
         }
-
     }
 
-    ////// 2) In vertical layer cases
-    //for (uint8_t vert_layer = 0; vert_layer < 4; vert_layer++)
-    //{
-    //    for (uint8_t pos = 0; pos < 4; pos++)
-    //    {
-    //        if (ledcube[pos][color] != 0x0001 << (4 * vert_layer))
-    //        {
-    //            return false;
-    //        }
-    //    }
-    //}
+    // Vertical lines in vertical planes - columns
+    // (16 cases)
+    // (bird's eye view)
+    //  0 0 0 1   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 1 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0
+    //  0 0 0 0   ||   0 0 0 1   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 1 0   ||   0 0 0 0   ||   0 0 0 0
+    //  0 0 0 0   ||   0 0 0 0   ||   0 0 0 1   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 1 0   ||   0 0 0 0
+    //  0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 1   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 1 0
+
+    //  0 1 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   1 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0
+    //  0 0 0 0   ||   0 1 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   1 0 0 0   ||   0 0 0 0   ||   0 0 0 0
+    //  0 0 0 0   ||   0 0 0 0   ||   0 1 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   1 0 0 0   ||   0 0 0 0
+    //  0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 1 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   0 0 0 0   ||   1 0 0 0
+    for (uint8_t column = 0; column < COLUMNS_NUM; column++)
+    {
+        found_gap1 = false;
+        for (uint8_t hor_layer = 0; hor_layer < LAYERS_NUM; hor_layer++)
+        {
+            mask1 = 0x0001 << column;
+            if ((ledcube[hor_layer][color] & mask1) != mask1)
+            {
+                found_gap1 = true;
+            }
+        }
+        if (!found_gap1)
+        {
+            return true;
+        }
+    }
+    // Crosswise lines in vertical planes - for both orthogonal sets of verical planes
+    // (16 cases)
+    // (side view)
+    //  1 0 0 0   ||   0 0 0 1
+    //  0 1 0 0   ||   0 0 1 0
+    //  0 0 1 0   ||   0 1 0 0
+    //  0 0 0 1   ||   1 0 0 0
+    for (uint8_t vert_layer = 0; vert_layer < LAYERS_NUM; vert_layer++)
+    {
+        found_gap1 = false;
+        found_gap2 = false;
+        found_gap3 = false;
+        found_gap4 = false;
+        for (uint8_t hor_layer = 0; hor_layer < LAYERS_NUM; hor_layer++)
+        {
+            mask1 = (0x0001 << (4 * vert_layer + hor_layer));
+            mask2 = ((0x0008 << (4 * vert_layer)) >> hor_layer);
+            mask3 = (0x0001 << (vert_layer + 4 * hor_layer));
+            mask4 = ((0x1000 << vert_layer) >> (4 * hor_layer));
+            if ((ledcube[hor_layer][color] & mask1) != mask1)
+            {
+                found_gap1 = true;
+            }
+            if ((ledcube[hor_layer][color] & mask2) != mask2)
+            {
+                found_gap2 = true;
+            }
+            if ((ledcube[hor_layer][color] & mask3) != mask3)
+            {
+                found_gap3 = true;
+            }
+            if ((ledcube[hor_layer][color] & mask4) != mask4)
+            {
+                found_gap4 = true;
+            }
+        }
+        if (!found_gap1)
+        {
+            return true;
+        }
+        if (!found_gap2)
+        {
+            return true;
+        }     
+        if (!found_gap3)
+        {
+            return true;
+        }
+        if (!found_gap4)
+        {
+            return true;
+        }
+    }
+    // Crosswise lines in vertical and horizontal planes
+    // (4 cases)
+    // (side view)
+    //  1 0 0 0   ||   1 0 0 0   ||   0 0 0 1   ||   0 0 0 1
+    //  0 1 0 0   ||   0 1 0 0   ||   0 0 1 0   ||   0 0 1 0
+    //  0 0 1 0   ||   0 0 1 0   ||   0 1 0 0   ||   0 1 0 0
+    //  0 0 0 1   ||   0 0 0 1   ||   1 0 0 0   ||   1 0 0 0
+    // (bird's eye view)
+    //  1 0 0 0   ||   0 0 0 1   ||   0 0 0 1   ||   0 0 0 1
+    //  0 1 0 0   ||   0 0 1 0   ||   0 0 1 0   ||   0 0 1 0
+    //  0 0 1 0   ||   0 1 0 0   ||   0 1 0 0   ||   0 1 0 0
+    //  0 0 0 1   ||   1 0 0 0   ||   1 0 0 0   ||   1 0 0 0
+    found_gap1 = false;
+    found_gap2 = false;
+    found_gap3 = false;
+    found_gap4 = false;
+    for (uint8_t vert_layer = 0; vert_layer < LAYERS_NUM; vert_layer++)
+    {   
+        mask1 = (0x0001 << (5 * vert_layer));
+        mask2 = (0x0008 << (3 * vert_layer));
+        if ((ledcube[vert_layer][color] & mask1) != mask1)
+        {
+            found_gap1 = true;
+        }
+        if ((ledcube[LAYER3 - vert_layer][color] & mask1) != mask1)
+        {
+            found_gap3 = true;
+        }
+        if ((ledcube[vert_layer][color] & mask2) != mask2)
+        {
+            found_gap2 = true;
+        }
+        if ((ledcube[LAYER3 - vert_layer][color] & mask2) != mask2)
+        {
+            found_gap4 = true;
+        }
+    }
+    if (!found_gap1)
+    {
+        return true;
+    }
+    if (!found_gap2)
+    {
+        return true;
+    }
+    if (!found_gap3)
+    {
+        return true;
+    }
+    if (!found_gap4)
+    {
+        return true;
+    }
 
     return false;
 }
 
+// Read 1 Byte of buffered data from UART
 void receive(void)
 {
     if (Serial1.available() > 0)
     {
         received = (uint8_t)Serial1.read();
-        receive_trigger = true;
+        react_trigger = true;
     }
 }
 
+// Transmit next message
 void transmit(void)
 {
-    if (transmit_trigger)
+    Serial1.write(message_to_transmit);
+}
+
+// Recognize received message and take needed actions
+void react(void)
+{
+    // MOVE Message received
+    if (received >> 6 != 0)
     {
-        Serial1.write(command_to_transmit);
-        transmit_trigger = false;
+        led_to_set.color = (received >> 6) - 1;
+        led_to_set.layer = ((received & 0x30) >> 4);
+        led_to_set.column = (received & 0x0F);
+        
+        // Check if this move doesn't eclipse previous
+        if (isAvailable(led_to_set.layer, led_to_set.column))
+        {
+            setLed(led_to_set.color, led_to_set.layer, led_to_set.column);
+            message_to_transmit = CORRECT_MOVE_MSG;
+
+            // Check whether this move ends game
+            if (isWinner(led_to_set.color))
+            {
+                switch (led_to_set.color)
+                {
+                case RED:
+                    game_result = RED_WON;
+                    game_ended = true;
+                    message_to_transmit = RED_WON_MSG;
+                    break;
+                case GREEN:
+                    game_result = GREEN_WON;
+                    game_ended = true;
+                    message_to_transmit = GREEN_WON_MSG;
+                    break;
+                case BLUE:
+                    game_result = BLUE_WON;
+                    game_ended = true;
+                    message_to_transmit = BLUE_WON_MSG;
+                    break;
+                default:
+                    break;
+                }
+            }
+
+            // Keep track of leds available to players
+            if (--moves_left == 0)
+            {
+                game_result = DRAW;
+                game_ended = true;
+                message_to_transmit = DRAW_MSG; // Draw if no more moves possible
+            }
+        }
+        else
+        {
+            message_to_transmit = INCORRECT_MOVE_MSG;
+        }
+        transmit_trigger = true; // Trigger feedback to Sender of MOVE message
+    }
+    // Other messages received
+    else
+    {   
+        switch (received)
+        {
+        case INIT_GAME_MSG:
+            reset_trigger = true;
+            break;
+        case 0x01:
+            game_result = DRAW;
+            game_ended = true;
+            message_to_transmit = DRAW_MSG; // Draw if no more moves possible
+            break;
+        default:
+            break;
+        }
+    }
+    react_trigger = false;
+}
+
+// Visualize result of gameplay
+void presentGameResult(void)
+{
+    switch (game_result)
+    {
+    case DRAW:
+        presentDraw();
+        break;
+    case RED_WON:
+        presentWinner(RED);
+        break;
+    case GREEN_WON:
+        presentWinner(GREEN);
+        break;
+    case BLUE_WON:
+        presentWinner(BLUE);
+        break;
+    default:
+        break;
     }
 }
 
-void react(void)
+// Visualize who is a Winner
+void presentWinner(uint8_t color)
 {
-    if (receive_trigger)
+    if (animation_counter1 > ANIM_SUBPERIOD)
     {
-        if (received >> 6 != 0)
+        animation_counter1 = 0;
+        clearLedcube();
+        ledcube[animation_iterator1][color] = 0xFFFF;
+
+        animation_iterator1 = go_up ? animation_iterator1+1 : animation_iterator1-1;
+         
+        if (animation_iterator1 == 0)
         {
-            led_to_set.color = (received >> 6) - 1;
-            led_to_set.layer = ((received & 0x30) >> 4);
-            led_to_set.column = (received & 0x0F);
-            if (isAvailable(led_to_set.layer, led_to_set.column))
-            {
-                setLed(led_to_set.color, led_to_set.layer, led_to_set.column);
-                command_to_transmit = CORRECT_MOVE_MSG;
-                if (isWinner(led_to_set.color))
-                {
-                    switch (led_to_set.color)
-                    {
-                    case RED:
-                        command_to_transmit = RED_WON_MSG;
-                        break;
-                    case GREEN:
-                        command_to_transmit = GREEN_WON_MSG;
-                        break;
-                    case BLUE:
-                        command_to_transmit = BLUE_WON_MSG;
-                        break;
-                    default:
-                        break;
-                    }
-                }
-                transmit_trigger = true;
-            }
-            else
-            {
-                command_to_transmit = INCORRECT_MOVE_MSG;
-                transmit_trigger = true;
-            }
+            go_up = true;
         }
-        else if (received == EXIT_GAME_MSG)
+        else if (animation_iterator1 >= LAYERS_NUM-1)
         {
-            clearLedcube();
+            go_up = false;
         }
-        receive_trigger = false;
     }
+    animation_counter1++;
+}
+
+// Visualize Draw
+void presentDraw(void)
+{
+    if (animation_counter1 > ANIM_SUBPERIOD)
+    {
+        animation_counter1 = 0;
+        clearLedcube();
+        ledcube[animation_iterator1][animation_iterator2] = 0xFFFF;
+
+        animation_iterator1 = go_up ? animation_iterator1 + 1 : animation_iterator1 - 1;
+
+        if (animation_iterator1 == 0)
+        {
+            go_up = true;
+        }
+        else if (animation_iterator1 >= LAYERS_NUM - 1)
+        {
+            go_up = false;
+        }
+    }
+    if (animation_counter2 > 6 * ANIM_SUBPERIOD)
+    {
+        animation_counter2 = 0;
+        if (++animation_iterator2 >= COLORS_NUM)
+        {
+            animation_iterator2 = 0;
+        }
+    }
+    animation_counter1++;
+    animation_counter2++;
 }
