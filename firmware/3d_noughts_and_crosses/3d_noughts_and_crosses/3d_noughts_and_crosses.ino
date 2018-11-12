@@ -227,19 +227,18 @@ void setup()
     pinMode(TXPin, OUTPUT);
     pinMode(RXPin, INPUT);
 
-    digitalWrite(L0Pin, LOW);
-    digitalWrite(L1Pin, LOW);
-    digitalWrite(L2Pin, LOW);
-    digitalWrite(L3Pin, LOW);
 
-    digitalWrite(R0Pin, LOW);
-    digitalWrite(R1Pin, LOW);
-    digitalWrite(G0Pin, LOW);
-    digitalWrite(G1Pin, LOW);
-    digitalWrite(B0Pin, LOW);
-    digitalWrite(B1Pin, LOW);
+    clrPortBit(&L0Port, L0PPin);
+    clrPortBit(&L1Port, L1PPin);
+    clrPortBit(&L2Port, L2PPin);
+    clrPortBit(&L3Port, L3PPin);
 
-    digitalWrite(LED_BUILTIN, LOW);
+    clrPortBit(&R0Port, R0PPin);
+    clrPortBit(&R1Port, R1PPin);
+    clrPortBit(&G0Port, G0PPin);
+    clrPortBit(&G1Port, G1PPin);
+    clrPortBit(&B0Port, B0PPin);
+    clrPortBit(&B1Port, B1PPin);
 
     Serial1.begin(9600);
 }
@@ -334,25 +333,25 @@ void loop()
 
 ////////// FUNCTIONS
 // Set given port pin to given value (0 or 1)
-void modifyPortBit(volatile uint8_t *port, uint8_t pin, uint8_t val)
+inline void modifyPortBit(volatile uint8_t *port, uint8_t pin, uint8_t val)
 {
     *port = (*port & ~(1 << pin)) | ((val << pin)&(1 << pin));
 }
 
 // Set on given port pin
-void setPortBit(volatile uint8_t *port, uint8_t pin)
+inline void setPortBit(volatile uint8_t *port, uint8_t pin)
 {
     *port |= (1 << pin);
 }
 
 // Set off given port pin
-void clrPortBit(volatile uint8_t *port, uint8_t pin)
+inline void clrPortBit(volatile uint8_t *port, uint8_t pin)
 {
     *port &= !(1 << pin);
 }
 
 // Set Bus of ledcube driver with given 8 bits buffer
-void setBus(uint8_t buffer)
+inline void setBus(uint8_t buffer)
 {
     modifyPortBit(&BUS0Port, BUS0PPin, (buffer & 0x01));
     modifyPortBit(&BUS1Port, BUS1PPin, ((buffer >> 1) & 0x01));
@@ -365,7 +364,7 @@ void setBus(uint8_t buffer)
 }
 
 // Set given ledcube layer with last state of ledcube[][] table
-void setLayer(uint8_t layer)
+inline void setLayer(uint8_t layer)
 {
     modifyPortBit(&R0Port, R0PPin, HIGH);
     setBus(ledcube[layer][RED] & 0xFF);
@@ -388,13 +387,13 @@ void setLayer(uint8_t layer)
 }
 
 // Set on given LED
-void setLed(uint8_t color, uint8_t layer, uint8_t column)
+inline void setLed(uint8_t color, uint8_t layer, uint8_t column)
 {
     ledcube[layer][color] |= 0x0001 << column;
 }
 
 // Check whether given given RGB LED has any Color set on
-bool isAvailable(uint8_t layer, uint8_t column)
+inline bool isAvailable(uint8_t layer, uint8_t column)
 {
     uint16_t layer_of_color;
     for (uint8_t color = 0; color < 3; color++)
@@ -409,7 +408,7 @@ bool isAvailable(uint8_t layer, uint8_t column)
 }
 
 // Set all LEDs off
-void clearLedcube(void)
+inline void clearLedcube(void)
 {
     for (uint8_t layer = 0; layer < 4; layer++)
     {
@@ -421,7 +420,7 @@ void clearLedcube(void)
 }
 
 // Reset ledcube driver and the game, leave testing state
-void resetLedcube(void)
+inline void resetLedcube(void)
 {
     clearLedcube();
     animation_counter1 = 0;
@@ -435,7 +434,7 @@ void resetLedcube(void)
 }
 
 // Test condition of LEDs after power on
-void testLedcube(void)
+inline void testLedcube(void)
 {
     if (animation_counter1 > TEST_SUBPERIOD)
     {
@@ -471,7 +470,7 @@ void testLedcube(void)
 }
 
 // Check if player with given color has won the game
-bool isWinner(uint8_t color)
+inline bool isWinner(uint8_t color)
 {   
     uint16_t mask1;
     uint16_t mask2;
@@ -687,7 +686,7 @@ bool isWinner(uint8_t color)
 }
 
 // Read 1 Byte of buffered data from UART
-void receive(void)
+inline void receive(void)
 {
     if (Serial1.available() > 0)
     {
@@ -697,13 +696,13 @@ void receive(void)
 }
 
 // Transmit next message
-void transmit(void)
+inline void transmit(void)
 {
     Serial1.write(message_to_transmit);
 }
 
 // Recognize received message and take needed actions
-void react(void)
+inline void react(void)
 {
     // MOVE Message received
     if (received >> 6 != 0)
@@ -778,7 +777,7 @@ void react(void)
 }
 
 // Visualize result of gameplay
-void presentGameResult(void)
+inline void presentGameResult(void)
 {
     switch (game_result)
     {
@@ -800,7 +799,7 @@ void presentGameResult(void)
 }
 
 // Visualize who is a Winner
-void presentWinner(uint8_t color)
+inline void presentWinner(uint8_t color)
 {
     if (animation_counter1 > ANIM_SUBPERIOD)
     {
@@ -823,7 +822,7 @@ void presentWinner(uint8_t color)
 }
 
 // Visualize Draw
-void presentDraw(void)
+inline void presentDraw(void)
 {
     if (animation_counter1 > ANIM_SUBPERIOD)
     {
