@@ -4,15 +4,12 @@
  Author:	morgarath
 */
 
-// #define hide
 
 ///////////////////////////////////////////////////////////////////////////////
 ////////// MACROS
 ///////////////////////////////////////////////////////////////////////////////
 
 //// Arduino pins mapping
-#define ARDUINO_PINS
-#ifdef ARDUINO_PINS
 // Arduino pins to configure bus setting selected group of ledcube columns
 #define BUS0Pin 12	// D12 - PD6
 #define BUS1Pin 11	// D11 - PB7
@@ -37,11 +34,8 @@
 // Arduino pins to communicate Bluetooth module over UART
 #define TXPin 1
 #define RXPin 0
-#endif // ARDUINO_PINS
 
 //// AT32U4 port pins mapping
-#define ATMEGA_PINS
-#ifdef ATMEGA_PINS
 // AT32U4 port pins to configure bus setting selected group of ledcube columns
 #define BUS0PPin PORTD6	
 #define BUS1PPin PORTB7	
@@ -66,11 +60,8 @@
 // AT32U4 port pins to communicate Bluetooth module over UART
 #define TXPPin PORTD3; 
 #define RXPPin PORTD2; 
-#endif // PORT_PINS
 
 //// AT32U4 ports of every pin mapped
-#define ATMEGA_PORTS
-#ifdef ATMEGA_PORTS
 // AT32U4 ports to configure bus setting selected group of ledcube columns
 #define BUS0Port PORTD	
 #define BUS1Port PORTB	
@@ -95,7 +86,6 @@
 // AT32U4 ports to communicate Bluetooth module over UART
 #define TXPort PORTD; 
 #define RXPort PORTD; 
-#endif // PORTS
 
 //// Game result constants
 #define RED_WON 0
@@ -133,14 +123,15 @@
 // Receivable messages
 // MOVE_MSG (*)
 #define INIT_GAME_MSG 0x00
+#define EXIT_GAME_MSG 0x01
+#define CONFIRM_MOVE_MSG 0x02
 // Transmittable messagaes
+#define DRAW_MSG 0x00
 #define RED_WON_MSG 0x01
 #define GREEN_WON_MSG 0x02
 #define BLUE_WON_MSG 0x03
-#define DRAW_MSG 0x04
-#define CORRECT_MOVE_MSG 0x05
-#define INCORRECT_MOVE_MSG 0x06
-#define READY_MSG 0x07
+#define CORRECT_MOVE_MSG 0x04
+#define INCORRECT_MOVE_MSG 0x05
 
 ///////////////////////////////////////////////////////////////////////////////
 ////////// STRUCTURES
@@ -165,6 +156,8 @@ uint16_t animation_counter2 = 0;
 uint8_t animation_iterator1 = 0;
 uint8_t animation_iterator2 = 0;
 bool go_up = true;
+bool blink_led_trigger = false;
+bool blink_toggle = true;
 
 // Communication
 uint8_t received;
@@ -183,9 +176,23 @@ bool game_ended = false;
 
 // Next LED to be set in ledcube[][] table with setLed() function
 ledcube_point led_to_set = {
-    0x00, // color
-    0x00, // layer
-    0x00, // column
+    0, // color
+    0, // layer
+    0, // column
+};
+
+// LED needing confirmation not yet set in ledcube[][] table with setLed() function
+ledcube_point led_to_blink = {
+    0, // color
+    0, // layer
+    0, // column
+};
+
+// LED presented on ledcube but not yet set in ledcube[][] table with setLed() function
+ledcube_point led_to_confirm = {
+    0, // color
+    0, // layer
+    0, // column
 };
 
 // Table of 12 Words in which is held state of LEDs in each layer and color of ledcube
@@ -263,7 +270,7 @@ void loop()
     // Initial testing procedure
     if (!test_ended)
     {
-        testLedcube(); // Test ledcube after power on
+        testLedcube(); // Test ledcube when not busy
     }
 
     // Receiving procedure
@@ -289,6 +296,11 @@ void loop()
         presentGameResult(); // Visualize on ledcube result of game
     }
 
+    if (blink_led_trigger)
+    {
+        blinkUnconfirmedLed();
+    }
+
     // Driving ledcube
     if (current_micros - previous_micros >= PERIOD)
     {
@@ -296,7 +308,7 @@ void loop()
 
         switch (current_layer)
         {
-        case LAYER0: 
+        case LAYER0:
             clrPortBit(&L3Port, L3PPin);
             setLayer(current_layer);
             setPortBit(&L0Port, L0PPin);
@@ -333,25 +345,25 @@ void loop()
 
 ////////// FUNCTIONS
 // Set given port pin to given value (0 or 1)
-inline void modifyPortBit(volatile uint8_t *port, uint8_t pin, uint8_t val)
+void modifyPortBit(volatile uint8_t *port, uint8_t pin, uint8_t val)
 {
     *port = (*port & ~(1 << pin)) | ((val << pin)&(1 << pin));
 }
 
 // Set on given port pin
-inline void setPortBit(volatile uint8_t *port, uint8_t pin)
+void setPortBit(volatile uint8_t *port, uint8_t pin)
 {
     *port |= (1 << pin);
 }
 
 // Set off given port pin
-inline void clrPortBit(volatile uint8_t *port, uint8_t pin)
+void clrPortBit(volatile uint8_t *port, uint8_t pin)
 {
     *port &= !(1 << pin);
 }
 
 // Set Bus of ledcube driver with given 8 bits buffer
-inline void setBus(uint8_t buffer)
+void setBus(uint8_t buffer)
 {
     modifyPortBit(&BUS0Port, BUS0PPin, (buffer & 0x01));
     modifyPortBit(&BUS1Port, BUS1PPin, ((buffer >> 1) & 0x01));
@@ -364,7 +376,7 @@ inline void setBus(uint8_t buffer)
 }
 
 // Set given ledcube layer with last state of ledcube[][] table
-inline void setLayer(uint8_t layer)
+void setLayer(uint8_t layer)
 {
     modifyPortBit(&R0Port, R0PPin, HIGH);
     setBus(ledcube[layer][RED] & 0xFF);
@@ -387,14 +399,21 @@ inline void setLayer(uint8_t layer)
 }
 
 // Set on given LED
-inline void setLed(uint8_t color, uint8_t layer, uint8_t column)
+void setLed(uint8_t color, uint8_t layer, uint8_t column)
 {
     ledcube[layer][color] |= 0x0001 << column;
 }
 
-// Check whether given given RGB LED has any Color set on
-inline bool isAvailable(uint8_t layer, uint8_t column)
+// Set off given LED
+void clrLed(uint8_t color, uint8_t layer, uint8_t column)
 {
+    ledcube[layer][color] &= ~(0x0001 << column);
+}
+
+// Check whether given RGB LED has any Color set on
+bool isAvailable(uint8_t layer, uint8_t column)
+{
+    clrLed(led_to_blink.color, led_to_blink.layer, led_to_blink.column); // Remove unconfirmed move led
     uint16_t layer_of_color;
     for (uint8_t color = 0; color < 3; color++)
     {
@@ -408,7 +427,7 @@ inline bool isAvailable(uint8_t layer, uint8_t column)
 }
 
 // Set all LEDs off
-inline void clearLedcube(void)
+void clearLedcube(void)
 {
     for (uint8_t layer = 0; layer < 4; layer++)
     {
@@ -420,21 +439,31 @@ inline void clearLedcube(void)
 }
 
 // Reset ledcube driver and the game, leave testing state
-inline void resetLedcube(void)
+void resetLedcube(void)
 {
     clearLedcube();
     animation_counter1 = 0;
     animation_counter2 = 0;
     animation_iterator1 = 0;
     animation_iterator2 = 0;
+    blink_led_trigger = false;
+    blink_toggle = false;
     go_up = true;
-    test_ended = true;
     game_ended = false;
     moves_left = LAYERS_NUM * COLUMNS_NUM;
+    led_to_set.color = 0;
+    led_to_set.layer = 0;
+    led_to_set.column = 0;
+    led_to_blink.color = 0;
+    led_to_blink.layer = 0;
+    led_to_blink.column = 0;
+    led_to_confirm.color = 0;
+    led_to_confirm.layer = 0;
+    led_to_confirm.column = 0;
 }
 
 // Test condition of LEDs after power on
-inline void testLedcube(void)
+void testLedcube(void)
 {
     if (animation_counter1 > TEST_SUBPERIOD)
     {
@@ -470,8 +499,9 @@ inline void testLedcube(void)
 }
 
 // Check if player with given color has won the game
-inline bool isWinner(uint8_t color)
-{   
+bool isWinner(uint8_t color)
+{
+    clrLed(led_to_blink.color, led_to_blink.layer, led_to_blink.column); // Remove unconfirmed move led
     uint16_t mask1;
     uint16_t mask2;
     uint16_t mask3;
@@ -490,7 +520,7 @@ inline bool isWinner(uint8_t color)
         |   <LOGO>   |
         --------------
         All leds in each layer for every color are represented by 1 bit
-        in Word (2 Bytes) to which they are mapped in such a way that 
+        in Word (2 Bytes) to which they are mapped in such a way that
         LED's bit has a position calculated as POS = X + 4*Y accordingly
         to the shown ledcube's layout shown above (*1).
     */
@@ -618,7 +648,7 @@ inline bool isWinner(uint8_t color)
         if (!found_gap2)
         {
             return true;
-        }     
+        }
         if (!found_gap3)
         {
             return true;
@@ -645,7 +675,7 @@ inline bool isWinner(uint8_t color)
     found_gap3 = false;
     found_gap4 = false;
     for (uint8_t vert_layer = 0; vert_layer < LAYERS_NUM; vert_layer++)
-    {   
+    {
         mask1 = (0x0001 << (5 * vert_layer));
         mask2 = (0x0008 << (3 * vert_layer));
         if ((ledcube[vert_layer][color] & mask1) != mask1)
@@ -686,7 +716,7 @@ inline bool isWinner(uint8_t color)
 }
 
 // Read 1 Byte of buffered data from UART
-inline void receive(void)
+void receive(void)
 {
     if (Serial1.available() > 0)
     {
@@ -696,78 +726,100 @@ inline void receive(void)
 }
 
 // Transmit next message
-inline void transmit(void)
+void transmit(void)
 {
     Serial1.write(message_to_transmit);
 }
 
 // Recognize received message and take needed actions
-inline void react(void)
+void react(void)
 {
     // MOVE Message received
     if (received >> 6 != 0)
     {
-        led_to_set.color = (received >> 6) - 1;
-        led_to_set.layer = ((received & 0x30) >> 4);
-        led_to_set.column = (received & 0x0F);
-        
+        led_to_confirm.color = (received >> 6) - 1;
+        led_to_confirm.layer = ((received & 0x30) >> 4);
+        led_to_confirm.column = (received & 0x0F);
         // Check if this move doesn't eclipse previous
-        if (isAvailable(led_to_set.layer, led_to_set.column))
+        if (isAvailable(led_to_confirm.layer, led_to_confirm.column))
         {
-            setLed(led_to_set.color, led_to_set.layer, led_to_set.column);
-            message_to_transmit = CORRECT_MOVE_MSG;
-
-            // Check whether this move ends game
-            if (isWinner(led_to_set.color))
-            {
-                switch (led_to_set.color)
-                {
-                case RED:
-                    game_result = RED_WON;
-                    game_ended = true;
-                    message_to_transmit = RED_WON_MSG;
-                    break;
-                case GREEN:
-                    game_result = GREEN_WON;
-                    game_ended = true;
-                    message_to_transmit = GREEN_WON_MSG;
-                    break;
-                case BLUE:
-                    game_result = BLUE_WON;
-                    game_ended = true;
-                    message_to_transmit = BLUE_WON_MSG;
-                    break;
-                default:
-                    break;
-                }
-            }
-
-            // Keep track of leds available to players
-            if (--moves_left == 0)
-            {
-                game_result = DRAW;
-                game_ended = true;
-                message_to_transmit = DRAW_MSG; // Draw if no more moves possible
-            }
+            led_to_blink = led_to_confirm;
+            blink_led_trigger = true;
         }
         else
         {
             message_to_transmit = INCORRECT_MOVE_MSG;
+            transmit_trigger = true; // Trigger feedback to Sender of MOVE message
+            blink_led_trigger = false;
+            led_to_blink.color = 0;
+            led_to_blink.layer = 0;
+            led_to_blink.column = 0;
         }
-        transmit_trigger = true; // Trigger feedback to Sender of MOVE message
     }
     // Other messages received
     else
-    {   
+    {
         switch (received)
         {
         case INIT_GAME_MSG:
+            test_ended = true;
             reset_trigger = true;
             break;
-        case 0x01:
-            game_result = DRAW;
-            game_ended = true;
-            message_to_transmit = DRAW_MSG; // Draw if no more moves possible
+        case EXIT_GAME_MSG:
+            test_ended = false;
+            reset_trigger = true;
+            break;
+        case CONFIRM_MOVE_MSG:
+            // Check if this move doesn't eclipse previous
+            if (isAvailable(led_to_blink.layer, led_to_blink.column))
+            {
+                led_to_set = led_to_confirm;
+                setLed(led_to_set.color, led_to_set.layer, led_to_set.column);
+                message_to_transmit = CORRECT_MOVE_MSG;
+
+                blink_led_trigger = false;
+                led_to_blink.color = 0;
+                led_to_blink.layer = 0;
+                led_to_blink.column = 0;
+
+                // Check whether this move ends game
+                if (isWinner(led_to_set.color))
+                {
+                    switch (led_to_set.color)
+                    {
+                    case RED:
+                        game_result = RED_WON;
+                        game_ended = true;
+                        message_to_transmit = RED_WON_MSG;
+                        break;
+                    case GREEN:
+                        game_result = GREEN_WON;
+                        game_ended = true;
+                        message_to_transmit = GREEN_WON_MSG;
+                        break;
+                    case BLUE:
+                        game_result = BLUE_WON;
+                        game_ended = true;
+                        message_to_transmit = BLUE_WON_MSG;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+
+                // Keep track of leds available to players
+                if (--moves_left == 0)
+                {
+                    game_result = DRAW;
+                    game_ended = true;
+                    message_to_transmit = DRAW_MSG; // Draw if no more moves possible
+                }
+            }
+            else
+            {
+                message_to_transmit = INCORRECT_MOVE_MSG;
+            }
+            transmit_trigger = true; // Trigger feedback to Sender of MOVE message
             break;
         default:
             break;
@@ -777,7 +829,7 @@ inline void react(void)
 }
 
 // Visualize result of gameplay
-inline void presentGameResult(void)
+void presentGameResult(void)
 {
     switch (game_result)
     {
@@ -799,7 +851,7 @@ inline void presentGameResult(void)
 }
 
 // Visualize who is a Winner
-inline void presentWinner(uint8_t color)
+void presentWinner(uint8_t color)
 {
     if (animation_counter1 > ANIM_SUBPERIOD)
     {
@@ -807,13 +859,13 @@ inline void presentWinner(uint8_t color)
         clearLedcube();
         ledcube[animation_iterator1][color] = 0xFFFF;
 
-        animation_iterator1 = go_up ? animation_iterator1+1 : animation_iterator1-1;
-         
+        animation_iterator1 = go_up ? animation_iterator1 + 1 : animation_iterator1 - 1;
+
         if (animation_iterator1 == 0)
         {
             go_up = true;
         }
-        else if (animation_iterator1 >= LAYERS_NUM-1)
+        else if (animation_iterator1 >= LAYERS_NUM - 1)
         {
             go_up = false;
         }
@@ -822,7 +874,7 @@ inline void presentWinner(uint8_t color)
 }
 
 // Visualize Draw
-inline void presentDraw(void)
+void presentDraw(void)
 {
     if (animation_counter1 > ANIM_SUBPERIOD)
     {
@@ -851,4 +903,23 @@ inline void presentDraw(void)
     }
     animation_counter1++;
     animation_counter2++;
+}
+
+// Blink Led before move gets confirmed
+void blinkUnconfirmedLed()
+{
+    if (animation_counter1++ > 2 * ANIM_SUBPERIOD)
+    {
+        blink_toggle = blink_toggle ? false : true;
+        animation_counter1 = 0;
+    }
+
+    if (blink_toggle)
+    {
+        setLed(led_to_confirm.color, led_to_confirm.layer, led_to_confirm.column);
+    }
+    else
+    {
+        clrLed(led_to_confirm.color, led_to_confirm.layer, led_to_confirm.column);
+    }
 }
