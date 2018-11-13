@@ -156,7 +156,6 @@ uint16_t animation_counter2 = 0;
 uint8_t animation_iterator1 = 0;
 uint8_t animation_iterator2 = 0;
 bool go_up = true;
-bool blink_led_trigger = false;
 bool blink_toggle = true;
 
 // Communication
@@ -171,8 +170,10 @@ uint8_t game_result;
 bool reset_trigger = false;
 bool transmit_trigger = false;
 bool react_trigger = false;
+bool blink_trigger = false;
 bool test_ended = false;
 bool game_ended = false;
+bool unconfirmed_move_received = false;
 
 // Next LED to be set in ledcube[][] table with setLed() function
 ledcube_point led_to_set = {
@@ -182,13 +183,6 @@ ledcube_point led_to_set = {
 };
 
 // LED needing confirmation not yet set in ledcube[][] table with setLed() function
-ledcube_point led_to_blink = {
-    0, // color
-    0, // layer
-    0, // column
-};
-
-// LED presented on ledcube but not yet set in ledcube[][] table with setLed() function
 ledcube_point led_to_confirm = {
     0, // color
     0, // layer
@@ -296,7 +290,7 @@ void loop()
         presentGameResult(); // Visualize on ledcube result of game
     }
 
-    if (blink_led_trigger)
+    if (blink_trigger)
     {
         blinkUnconfirmedLed();
     }
@@ -340,6 +334,11 @@ void loop()
         {
             current_layer = 0;
         }
+    }
+
+    if (blink_trigger)
+    {
+        clrLed(led_to_confirm.color, led_to_confirm.layer, led_to_confirm.column); // Remove unconfirmed move led
     }
 }
 
@@ -413,7 +412,6 @@ void clrLed(uint8_t color, uint8_t layer, uint8_t column)
 // Check whether given RGB LED has any Color set on
 bool isAvailable(uint8_t layer, uint8_t column)
 {
-    clrLed(led_to_blink.color, led_to_blink.layer, led_to_blink.column); // Remove unconfirmed move led
     uint16_t layer_of_color;
     for (uint8_t color = 0; color < 3; color++)
     {
@@ -446,17 +444,15 @@ void resetLedcube(void)
     animation_counter2 = 0;
     animation_iterator1 = 0;
     animation_iterator2 = 0;
-    blink_led_trigger = false;
+    blink_trigger = false;
     blink_toggle = false;
     go_up = true;
     game_ended = false;
     moves_left = LAYERS_NUM * COLUMNS_NUM;
+    unconfirmed_move_received = false;
     led_to_set.color = 0;
     led_to_set.layer = 0;
     led_to_set.column = 0;
-    led_to_blink.color = 0;
-    led_to_blink.layer = 0;
-    led_to_blink.column = 0;
     led_to_confirm.color = 0;
     led_to_confirm.layer = 0;
     led_to_confirm.column = 0;
@@ -501,7 +497,6 @@ void testLedcube(void)
 // Check if player with given color has won the game
 bool isWinner(uint8_t color)
 {
-    clrLed(led_to_blink.color, led_to_blink.layer, led_to_blink.column); // Remove unconfirmed move led
     uint16_t mask1;
     uint16_t mask2;
     uint16_t mask3;
@@ -743,17 +738,17 @@ void react(void)
         // Check if this move doesn't eclipse previous
         if (isAvailable(led_to_confirm.layer, led_to_confirm.column))
         {
-            led_to_blink = led_to_confirm;
-            blink_led_trigger = true;
+            unconfirmed_move_received = true;
+            blink_trigger = true;
+            message_to_transmit = CORRECT_MOVE_MSG;
+            transmit_trigger = true; // Trigger feedback to Sender of MOVE message
         }
         else
         {
+            unconfirmed_move_received = false;
+            blink_trigger = false;
             message_to_transmit = INCORRECT_MOVE_MSG;
             transmit_trigger = true; // Trigger feedback to Sender of MOVE message
-            blink_led_trigger = false;
-            led_to_blink.color = 0;
-            led_to_blink.layer = 0;
-            led_to_blink.column = 0;
         }
     }
     // Other messages received
@@ -770,17 +765,13 @@ void react(void)
             reset_trigger = true;
             break;
         case CONFIRM_MOVE_MSG:
-            // Check if this move doesn't eclipse previous
-            if (isAvailable(led_to_blink.layer, led_to_blink.column))
+            if (unconfirmed_move_received)
             {
+                blink_trigger = false;
+
                 led_to_set = led_to_confirm;
                 setLed(led_to_set.color, led_to_set.layer, led_to_set.column);
                 message_to_transmit = CORRECT_MOVE_MSG;
-
-                blink_led_trigger = false;
-                led_to_blink.color = 0;
-                led_to_blink.layer = 0;
-                led_to_blink.column = 0;
 
                 // Check whether this move ends game
                 if (isWinner(led_to_set.color))
@@ -814,6 +805,8 @@ void react(void)
                     game_ended = true;
                     message_to_transmit = DRAW_MSG; // Draw if no more moves possible
                 }
+
+                unconfirmed_move_received = false;
             }
             else
             {
