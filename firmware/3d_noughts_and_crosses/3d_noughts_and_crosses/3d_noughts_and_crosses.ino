@@ -8,32 +8,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 ////////// MACROS
 ///////////////////////////////////////////////////////////////////////////////
-//// Arduino pins mapping
-// Arduino pins to configure bus setting selected group of ledcube columns
-#define BUS0Pin 12	// D12 - PD6
-#define BUS1Pin 11	// D11 - PB7
-#define BUS2Pin 10	// D10 - PB6
-#define BUS3Pin 9	// D9  - PB5
-#define BUS4Pin 8	// D8  - PB4
-#define BUS5Pin 7	// D7  - PE6
-#define BUS6Pin 6	// D6  - PD7
-#define BUS7Pin 5	// D5  - PC6
-// Arduino pins to select ledcube columms' group to be configured
-#define R0Pin 13	// Red	 collumns 1-8
-#define R1Pin A0	// Red	 collumns 9-16
-#define G0Pin A1	// Green collumns 1-8
-#define G1Pin A2	// Green collumns 9-16
-#define B0Pin A3	// Blue	 collumns 1-8
-#define B1Pin A4	// Blue	 collumns 9-16
-// Arduino pins to select ledcube layer to be activated
-#define L0Pin A5	// Layer 0
-#define L1Pin 4	    // Layer 1
-#define L2Pin 3	    // Layer 2
-#define L3Pin 2	    // Layer 3
-// Arduino pins to communicate Bluetooth module over UART
-#define TXPin 1
-#define RXPin 0
-
 //// AT32U4 port data register pins mapping
 // AT32U4 port pins to configure bus setting selected group of ledcube columns
 #define BUS0PPin PORTD6	
@@ -257,57 +231,29 @@ uint16_t ledcube[LAYERS_NUM][PLAYERS_NUM] = { {0x0000, 0x0000, 0x0000},	  // 0
 //\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 void setup()
 {
-    //// Set as outputs pins configuring bus setting selected group of ledcube columns
-    //setRegBit(&BUS0DDR, BUS0DD);
-    //setRegBit(&BUS1DDR, BUS1DD);
-    //setRegBit(&BUS2DDR, BUS2DD);
-    //setRegBit(&BUS3DDR, BUS3DD);
-    //setRegBit(&BUS4DDR, BUS4DD);
-    //setRegBit(&BUS5DDR, BUS5DD);
-    //setRegBit(&BUS6DDR, BUS6DD);
-    //setRegBit(&BUS7DDR, BUS7DD);
+    // Set as outputs pins configuring bus setting selected group of ledcube columns
+    setRegBit(&BUS0DDR, BUS0DD);
+    setRegBit(&BUS1DDR, BUS1DD);
+    setRegBit(&BUS2DDR, BUS2DD);
+    setRegBit(&BUS3DDR, BUS3DD);
+    setRegBit(&BUS4DDR, BUS4DD);
+    setRegBit(&BUS5DDR, BUS5DD);
+    setRegBit(&BUS6DDR, BUS6DD);
+    setRegBit(&BUS7DDR, BUS7DD);
 
-    //// Set as outputs pins selecting ledcube layer to be activated
-    //setRegBit(&L0DDR, L0DD);
-    //setRegBit(&L1DDR, L1DD);
-    //setRegBit(&L2DDR, L2DD);
-    //setRegBit(&L3DDR, L3DD);
+    // Set as outputs pins selecting ledcube layer to be activated
+    setRegBit(&L0DDR, L0DD);
+    setRegBit(&L1DDR, L1DD);
+    setRegBit(&L2DDR, L2DD);
+    setRegBit(&L3DDR, L3DD);
 
-    //// Set as outputs pins selecting ledcube columms' group to be configured
-    //setRegBit(&R0DDR, R0DD);
-    //setRegBit(&R1DDR, R1DD);
-    //setRegBit(&G0DDR, G0DD);
-    //setRegBit(&G1DDR, G1DD);
-    //setRegBit(&B0DDR, B0DD);
-    //setRegBit(&B1DDR, B1DD);
-
-    //// Set RX as input and TX as output
-    //setRegBit(&TXDDR, TXDD);
-    //clrRegBit(&RXDDR, RXDD);
-
-    pinMode(BUS0Pin, OUTPUT);
-    pinMode(BUS1Pin, OUTPUT);
-    pinMode(BUS2Pin, OUTPUT);
-    pinMode(BUS3Pin, OUTPUT);
-    pinMode(BUS4Pin, OUTPUT);
-    pinMode(BUS5Pin, OUTPUT);
-    pinMode(BUS6Pin, OUTPUT);
-    pinMode(BUS7Pin, OUTPUT);
-
-    pinMode(L0Pin, OUTPUT);
-    pinMode(L1Pin, OUTPUT);
-    pinMode(L2Pin, OUTPUT);
-    pinMode(L3Pin, OUTPUT);
-
-    pinMode(R0Pin, OUTPUT);
-    pinMode(R1Pin, OUTPUT);
-    pinMode(G0Pin, OUTPUT);
-    pinMode(G1Pin, OUTPUT);
-    pinMode(B0Pin, OUTPUT);
-    pinMode(B1Pin, OUTPUT);
-
-    pinMode(TXPin, OUTPUT);
-    pinMode(RXPin, INPUT);
+    // Set as outputs pins selecting ledcube columms' group to be configured
+    setRegBit(&R0DDR, R0DD);
+    setRegBit(&R1DDR, R1DD);
+    setRegBit(&G0DDR, G0DD);
+    setRegBit(&G1DDR, G1DD);
+    setRegBit(&B0DDR, B0DD);
+    setRegBit(&B1DDR, B1DD);
 
     // Set initially to Low State lines driving ledcube 
     clrRegBit(&L0Port, L0PPin);
@@ -417,7 +363,7 @@ void setRegBit(volatile uint8_t *reg, uint8_t bit)
 // Set off given bit of register
 void clrRegBit(volatile uint8_t *reg, uint8_t bit)
 {
-    *reg &= !(1 << bit);
+    *reg &= ~(1 << bit);
 }
 
 // Set given bit of register to given value (0 or 1)
