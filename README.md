@@ -7,6 +7,5 @@ Presented on 4x4x4 RGB led cube controlled by Arduino Micro and self designed ex
 Users play with use of android app communicating with led cube controller over Bluetooth 2.1. 
 
 CONTENTS:
- - docs, schemas, pictures, photos etc.,
  - arduino firmware files,
  - android app files.
