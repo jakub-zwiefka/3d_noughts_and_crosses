@@ -144,6 +144,7 @@
 #define PERIOD 2500  // period at which to multiplex ledcube layers (us) // f=400Hz
 #define TEST_SUBPERIOD 3500  // period of setting on next leds in testLedcube()
 #define ANIM_SUBPERIOD 8000  // period of setting on next layers in animations presenting winners
+#define BLINK_SUBPERIOD 8000  // period of blinking uncorfirmed led
 
 //// Message type constants
 //                   Player:Red/Green/Blue   Layer  Column
@@ -411,13 +412,43 @@ void setLayer(uint8_t layer)
 // Set on given LED
 void setLed(uint8_t color, uint8_t layer, uint8_t column)
 {
-    ledcube[layer][color] |= 0x0001 << column;
+    if (column < LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x0001 << column;
+    }
+    else if (column < 2 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x0010 << column - LEDCUBE_SIZE;
+    }
+    else if (column < 3 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x0100 << column - 2 * LEDCUBE_SIZE;
+    }
+    else if (column < 4 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x1000 << column - 3 * LEDCUBE_SIZE;
+    }
 }
 
 // Set off given LED
 void clrLed(uint8_t color, uint8_t layer, uint8_t column)
 {
-    ledcube[layer][color] &= ~(0x0001 << column);
+    if (column < LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x0001 << column);
+    }
+    else if (column < 2 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x0010 << column - LEDCUBE_SIZE);
+    }
+    else if (column < 3 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x0100 << column - 2 * LEDCUBE_SIZE);
+    }
+    else if (column < 4 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x1000 << column - 3 * LEDCUBE_SIZE);
+    }
 }
 
 // Reset ledcube driver and the game, leave testing state
@@ -978,7 +1009,7 @@ void presentDraw(void)
 // Blink Led before move gets confirmed
 void blinkUnconfirmedLed()
 {
-    if (animation_counter1++ > 2 * ANIM_SUBPERIOD)
+    if (animation_counter1++ > 2 * BLINK_SUBPERIOD)
     {
         blink_toggle = blink_toggle ? false : true;
         animation_counter1 = 0;
