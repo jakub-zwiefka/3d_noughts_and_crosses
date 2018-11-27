@@ -758,7 +758,7 @@ bool isWinner(uint8_t color)
             {
                 found_gap1 = true;
             }
-            mask = 0x1000 >> (LEDCUBE_SIZE + 1) * row;
+            mask = 0x1000 >> (LEDCUBE_SIZE - 1) * row;
             if ((ledcube[layer][color] & mask) != mask)
             {
                 found_gap2 = true;
