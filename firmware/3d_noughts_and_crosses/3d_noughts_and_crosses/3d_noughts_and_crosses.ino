@@ -308,12 +308,11 @@ void loop()
         presentGameResult(); // Visualize on ledcube result of game
     }
 
+    // Driving ledcube
     if (blink_trigger)
     {
         blinkUnconfirmedLed();
     }
-
-    // Driving ledcube
     if (current_micros - previous_micros >= PERIOD)
     {
         previous_micros = current_micros;
@@ -353,7 +352,6 @@ void loop()
             current_layer = 0;
         }
     }
-
     if (blink_trigger)
     {
         clrLed(led_to_confirm.color, led_to_confirm.layer, led_to_confirm.column); // Remove unconfirmed move led
@@ -670,9 +668,11 @@ void react(void)
             break;
         }
         case EXIT_GAME_MSG:
+        {
             controller_mode = TEST;
             reset_trigger = true;
             break;
+        }
         default:
             break;
         }
