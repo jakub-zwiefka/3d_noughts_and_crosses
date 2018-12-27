@@ -1047,7 +1047,7 @@ void presentGameResult(void)
 }
 
 // Visualize who is a Winner and the line which made him win
-void -(uint8_t color)
+void presentWinner(uint8_t color)
 {
     if (animation_counter3 > 0)
     {
