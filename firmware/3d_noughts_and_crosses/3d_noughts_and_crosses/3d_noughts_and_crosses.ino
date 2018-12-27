@@ -113,7 +113,7 @@
 #define RXDDR DDRD
 
 ////Controler modes
-#define TEST 0
+#define WAIT 0
 #define GAME_ON 1
 #define GAME_END 2
 
@@ -143,7 +143,10 @@
 //// Time constants
 #define PERIOD 2500  // period at which to multiplex ledcube layers (us) // f=400Hz
 #define TEST_SUBPERIOD 3500  // period of setting on next leds in testLedcube()
-#define ANIM_SUBPERIOD 8000  // period of setting on next layers in animations presenting winners
+#define ANIM_SUBPERIOD_1 8000  // period of setting on next layers in animations presenting winners
+#define ANIM_SUBPERIOD_2 16000 // period of setting on next layers in animations presenting draw
+#define PRESENT_WINNING_LINE_DURATION 250000  // duration of presenting winning line
+#define BLINK_SUBPERIOD 16000  // period of blinking uncorfirmed led
 
 //// Message type constants
 //                   Player:Red/Green/Blue   Layer  Column
@@ -182,6 +185,7 @@ uint8_t current_layer = 0;
 // Animations
 uint16_t animation_counter1 = 0;
 uint16_t animation_counter2 = 0;
+uint32_t animation_counter3 = PRESENT_WINNING_LINE_DURATION;
 uint8_t animation_iterator1 = 0;
 uint8_t animation_iterator2 = 0;
 bool go_up = true;
@@ -197,7 +201,7 @@ uint8_t moves_left = LAYERS_NUM * COLUMNS_NUM;
 uint8_t game_result;
 
 // Control
-uint8_t controller_mode = TEST;
+uint8_t controller_mode = WAIT;
 bool reset_trigger = false;
 bool transmit_trigger = false;
 bool react_trigger = false;
@@ -217,6 +221,9 @@ ledcube_point led_to_confirm = {
     0, // layer
     0, // column
 };
+
+// LEDs' line winning the game
+ledcube_point winning_leds[LEDCUBE_SIZE];
 
 // Table of 12 Words in which is held state of LEDs in each layer and color of ledcube
 //                         Groups of columns:  red:    green:  blue:      Layer:
@@ -277,8 +284,6 @@ void setup()
 //\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 void loop()
 {
-    current_micros = micros();
-
     // Reset procedure
     if (reset_trigger)
     {
@@ -290,23 +295,22 @@ void loop()
     communicate();
 
     // Testing procedure
-    if (controller_mode == TEST)
+    if (controller_mode == WAIT)
     {
         testLedcube(); // Test ledcube when not busy
     }
-
     // Present game result procedure
-    if (controller_mode == GAME_END)
+    else if (controller_mode == GAME_END)
     {
         presentGameResult(); // Visualize on ledcube result of game
     }
 
+    // Driving ledcube
     if (blink_trigger)
     {
         blinkUnconfirmedLed();
     }
-
-    // Driving ledcube
+    current_micros = micros();
     if (current_micros - previous_micros >= PERIOD)
     {
         previous_micros = current_micros;
@@ -314,9 +318,9 @@ void loop()
         switch (current_layer)
         {
         case LAYER0:
-            clrRegBit(&L3Port, L3PPin);
-            setLayer(current_layer);
-            setRegBit(&L0Port, L0PPin);
+            clrRegBit(&L3Port, L3PPin); // set off Layer 3
+            setLayer(current_layer);    // set Layer 0 columns
+            setRegBit(&L0Port, L0PPin); // set on Layer 0
             break;
 
         case LAYER1:
@@ -346,7 +350,6 @@ void loop()
             current_layer = 0;
         }
     }
-
     if (blink_trigger)
     {
         clrLed(led_to_confirm.color, led_to_confirm.layer, led_to_confirm.column); // Remove unconfirmed move led
@@ -411,13 +414,43 @@ void setLayer(uint8_t layer)
 // Set on given LED
 void setLed(uint8_t color, uint8_t layer, uint8_t column)
 {
-    ledcube[layer][color] |= 0x0001 << column;
+    if (column < LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x0001 << column;
+    }
+    else if (column < 2 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x0010 << column - LEDCUBE_SIZE;
+    }
+    else if (column < 3 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x0100 << column - 2 * LEDCUBE_SIZE;
+    }
+    else if (column < 4 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] |= 0x1000 << column - 3 * LEDCUBE_SIZE;
+    }
 }
 
 // Set off given LED
 void clrLed(uint8_t color, uint8_t layer, uint8_t column)
 {
-    ledcube[layer][color] &= ~(0x0001 << column);
+    if (column < LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x0001 << column);
+    }
+    else if (column < 2 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x0010 << column - LEDCUBE_SIZE);
+    }
+    else if (column < 3 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x0100 << column - 2 * LEDCUBE_SIZE);
+    }
+    else if (column < 4 * LEDCUBE_SIZE)
+    {
+        ledcube[layer][color] &= ~(0x1000 << column - 3 * LEDCUBE_SIZE);
+    }
 }
 
 // Reset ledcube driver and the game, leave testing state
@@ -426,6 +459,7 @@ void resetLedcube(void)
     clearLedcube();
     animation_counter1 = 0;
     animation_counter2 = 0;
+    animation_counter3 = PRESENT_WINNING_LINE_DURATION;
     animation_iterator1 = 0;
     animation_iterator2 = 0;
     blink_trigger = false;
@@ -439,6 +473,18 @@ void resetLedcube(void)
     led_to_confirm.color = 0;
     led_to_confirm.layer = 0;
     led_to_confirm.column = 0;
+    winning_leds[0].color = 0;
+    winning_leds[0].layer = 0;
+    winning_leds[0].column = 0;
+    winning_leds[1].color = 0;
+    winning_leds[1].layer = 0;
+    winning_leds[1].column = 5;
+    winning_leds[2].color = 0;
+    winning_leds[2].layer = 0;
+    winning_leds[2].column = 9;
+    winning_leds[3].color = 0;
+    winning_leds[3].layer = 0;
+    winning_leds[3].column = 12;
 }
 
 // Set all LEDs off
@@ -620,9 +666,11 @@ void react(void)
             break;
         }
         case EXIT_GAME_MSG:
-            controller_mode = TEST;
+        {
+            controller_mode = WAIT;
             reset_trigger = true;
             break;
+        }
         default:
             break;
         }
@@ -637,14 +685,14 @@ void react(void)
             reset_trigger = true;
             break;
         case EXIT_GAME_MSG:
-            controller_mode = TEST;
+            controller_mode = WAIT;
             reset_trigger = true;
             break;
         default:
             break;
         }
     }
-    else if (controller_mode == TEST)
+    else if (controller_mode == WAIT)
     {
         switch (received_msg_type)
         {
@@ -696,6 +744,12 @@ bool isWinner(uint8_t color)
             mask = 0x000F << (LEDCUBE_SIZE * row);
             if ((ledcube[layer][color] & mask) == mask)
             {
+                for (int n = 0; n < LEDCUBE_SIZE; n++)
+                {
+                    winning_leds[n].color = color;
+                    winning_leds[n].layer = layer;
+                    winning_leds[n].column = LEDCUBE_SIZE * row + n;
+                }
                 return true;
             }
             // Horizontal lines in horizontal planes
@@ -708,6 +762,12 @@ bool isWinner(uint8_t color)
             mask = 0x1111 << row;
             if ((ledcube[layer][color] & mask) == mask)
             {
+                for (int n = 0; n < LEDCUBE_SIZE; n++)
+                {
+                    winning_leds[n].color = color;
+                    winning_leds[n].layer = layer;
+                    winning_leds[n].column = LEDCUBE_SIZE * n + row;
+                }
                 return true;
             }
         }
@@ -727,7 +787,7 @@ bool isWinner(uint8_t color)
             {
                 found_gap1 = true;
             }
-            mask = 0x1000 >> (LEDCUBE_SIZE + 1) * row;
+            mask = 0x1000 >> (LEDCUBE_SIZE - 1) * row;
             if ((ledcube[layer][color] & mask) != mask)
             {
                 found_gap2 = true;
@@ -735,10 +795,22 @@ bool isWinner(uint8_t color)
         }
         if (!found_gap1)
         {
+            for (int n = 0; n < LEDCUBE_SIZE; n++)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = layer;
+                winning_leds[n].column = (LEDCUBE_SIZE + 1) * n;
+            }
             return true;
         }
         if (!found_gap2)
         {
+            for (int n = 0; n < LEDCUBE_SIZE; n++)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = layer;
+                winning_leds[n].column = (LEDCUBE_SIZE - 1) * (n + 1);
+            }
             return true;
         }
     }
@@ -768,6 +840,12 @@ bool isWinner(uint8_t color)
         }
         if (!found_gap1)
         {
+            for (int n = 0; n < LEDCUBE_SIZE; n++)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = n;
+                winning_leds[n].column = column;
+            }
             return true;
         }
     }
@@ -807,33 +885,57 @@ bool isWinner(uint8_t color)
         }
         if (!found_gap1)
         {
+            for (int n = 0; n < LEDCUBE_SIZE; n++)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = n;
+                winning_leds[n].column = LEDCUBE_SIZE * vert_plane + n;
+            }
             return true;
         }
         if (!found_gap2)
         {
+            for (int n = 3; n >= 0; n--)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = LEDCUBE_SIZE - n - 1;
+                winning_leds[n].column = LEDCUBE_SIZE * vert_plane + n;
+            }
             return true;
         }
         if (!found_gap3)
         {
+            for (int n = 0; n < LEDCUBE_SIZE; n++)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = n;
+                winning_leds[n].column = vert_plane + LEDCUBE_SIZE * n;
+            }
             return true;
         }
         if (!found_gap4)
         {
+            for (int n = 3; n >= 0; n--)
+            {
+                winning_leds[n].color = color;
+                winning_leds[n].layer = LEDCUBE_SIZE - n - 1;
+                winning_leds[n].column = vert_plane + LEDCUBE_SIZE * n;
+            }
             return true;
         }
     }
     // Crosswise lines in both vertical and horizontal planes
     // (4 cases)
     // (side view)
-    //  1 0 0 0   ||   1 0 0 0   ||   0 0 0 1   ||   0 0 0 1
-    //  0 1 0 0   ||   0 1 0 0   ||   0 0 1 0   ||   0 0 1 0
-    //  0 0 1 0   ||   0 0 1 0   ||   0 1 0 0   ||   0 1 0 0
-    //  0 0 0 1   ||   0 0 0 1   ||   1 0 0 0   ||   1 0 0 0
+    //  1 0 0 0   ||   0 0 0 1   ||   1 0 0 0   ||   0 0 0 1
+    //  0 1 0 0   ||   0 0 1 0   ||   0 1 0 0   ||   0 0 1 0
+    //  0 0 1 0   ||   0 1 0 0   ||   0 0 1 0   ||   0 1 0 0
+    //  0 0 0 1   ||   1 0 0 0   ||   0 0 0 1   ||   1 0 0 0
     // (bird's eye view)
-    //  1 0 0 0   ||   0 0 0 1   ||   0 0 0 1   ||   0 0 0 1
-    //  0 1 0 0   ||   0 0 1 0   ||   0 0 1 0   ||   0 0 1 0
-    //  0 0 1 0   ||   0 1 0 0   ||   0 1 0 0   ||   0 1 0 0
-    //  0 0 0 1   ||   1 0 0 0   ||   1 0 0 0   ||   1 0 0 0
+    //  0 0 0 1   ||   0 0 0 1   ||   1 0 0 0   ||   0 0 0 1
+    //  0 0 1 0   ||   0 0 1 0   ||   0 1 0 0   ||   0 0 1 0
+    //  0 1 0 0   ||   0 1 0 0   ||   0 0 1 0   ||   0 1 0 0
+    //  1 0 0 0   ||   1 0 0 0   ||   0 0 0 1   ||   1 0 0 0
     found_gap1 = false;
     found_gap2 = false;
     found_gap3 = false;
@@ -861,18 +963,42 @@ bool isWinner(uint8_t color)
     }
     if (!found_gap1)
     {
+        for (int n = 0; n < LEDCUBE_SIZE; n++)
+        {
+            winning_leds[n].color = color;
+            winning_leds[n].layer = n;
+            winning_leds[n].column = (LEDCUBE_SIZE + 1) * n;
+        }
         return true;
     }
     if (!found_gap2)
     {
+        for (int n = 3; n >= 0; n--)
+        {
+            winning_leds[n].color = color;
+            winning_leds[n].layer = LEDCUBE_SIZE - n - 1;
+            winning_leds[n].column = (LEDCUBE_SIZE + 1) * n;
+        }
         return true;
     }
     if (!found_gap3)
     {
+        for (int n = 0; n < LEDCUBE_SIZE; n++)
+        {
+            winning_leds[n].color = color;
+            winning_leds[n].layer = n;
+            winning_leds[n].column = (LEDCUBE_SIZE - 1) * (n + 1);
+        }
         return true;
     }
     if (!found_gap4)
     {
+        for (int n = 3; n >= 0; n--)
+        {
+            winning_leds[n].color = color;
+            winning_leds[n].layer = LEDCUBE_SIZE - n - 1;
+            winning_leds[n].column = (LEDCUBE_SIZE - 1) * (n + 1);
+        }
         return true;
     }
 
@@ -920,33 +1046,70 @@ void presentGameResult(void)
     }
 }
 
-// Visualize who is a Winner
+// Visualize who is a Winner and the line which made him win
 void presentWinner(uint8_t color)
 {
-    if (animation_counter1 > ANIM_SUBPERIOD)
+    if (animation_counter3 > 0)
     {
-        animation_counter1 = 0;
-        clearLedcube();
-        ledcube[animation_iterator1][color] = 0xFFFF;
+        if (animation_counter1 > ANIM_SUBPERIOD_1)
+        {
+            if (animation_counter3 == PRESENT_WINNING_LINE_DURATION)
+            {
+                clearLedcube();
+            }
 
-        animation_iterator1 = go_up ? animation_iterator1 + 1 : animation_iterator1 - 1;
+            animation_counter1 = 0;
 
-        if (animation_iterator1 == 0)
+            setLed(winning_leds[animation_iterator2].color, winning_leds[animation_iterator2].layer, winning_leds[animation_iterator2].column);
+
+            animation_iterator2 = go_up ? animation_iterator2 + 1 : animation_iterator2 - 1;
+
+            clrLed(winning_leds[animation_iterator2].color, winning_leds[animation_iterator2].layer, winning_leds[animation_iterator2].column);
+
+            if (animation_iterator2 == 0)
+            {
+                go_up = true;
+            }
+            else if (animation_iterator2 >= LAYERS_NUM - 1)
+            {
+                go_up = false;
+            }
+
+        }
+
+        if (--animation_counter3 == 0)
         {
             go_up = true;
         }
-        else if (animation_iterator1 >= LAYERS_NUM - 1)
+    }
+    else
+    {
+        if (animation_counter1 > ANIM_SUBPERIOD_1)
         {
-            go_up = false;
+            animation_counter1 = 0;
+            clearLedcube();
+            ledcube[animation_iterator1][color] = 0xFFFF;
+
+            animation_iterator1 = go_up ? animation_iterator1 + 1 : animation_iterator1 - 1;
+
+            if (animation_iterator1 == 0)
+            {
+                go_up = true;
+            }
+            else if (animation_iterator1 >= LAYERS_NUM - 1)
+            {
+                go_up = false;
+            }
         }
     }
+
     animation_counter1++;
 }
 
 // Visualize a Draw
 void presentDraw(void)
 {
-    if (animation_counter1 > ANIM_SUBPERIOD)
+    if (animation_counter1 > ANIM_SUBPERIOD_1)
     {
         animation_counter1 = 0;
         clearLedcube();
@@ -963,7 +1126,7 @@ void presentDraw(void)
             go_up = false;
         }
     }
-    if (animation_counter2 > 6 * ANIM_SUBPERIOD)
+    if (animation_counter2 > ANIM_SUBPERIOD_2)
     {
         animation_counter2 = 0;
         if (++animation_iterator2 >= COLORS_NUM)
@@ -978,7 +1141,7 @@ void presentDraw(void)
 // Blink Led before move gets confirmed
 void blinkUnconfirmedLed()
 {
-    if (animation_counter1++ > 2 * ANIM_SUBPERIOD)
+    if (animation_counter1++ > BLINK_SUBPERIOD)
     {
         blink_toggle = blink_toggle ? false : true;
         animation_counter1 = 0;
