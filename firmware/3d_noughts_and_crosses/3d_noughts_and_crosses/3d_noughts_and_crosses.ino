@@ -113,7 +113,7 @@
 #define RXDDR DDRD
 
 ////Controler modes
-#define TEST 0
+#define WAIT 0
 #define GAME_ON 1
 #define GAME_END 2
 
@@ -201,7 +201,7 @@ uint8_t moves_left = LAYERS_NUM * COLUMNS_NUM;
 uint8_t game_result;
 
 // Control
-uint8_t controller_mode = TEST;
+uint8_t controller_mode = WAIT;
 bool reset_trigger = false;
 bool transmit_trigger = false;
 bool react_trigger = false;
@@ -284,8 +284,6 @@ void setup()
 //\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//\\//
 void loop()
 {
-    current_micros = micros();
-
     // Reset procedure
     if (reset_trigger)
     {
@@ -297,13 +295,12 @@ void loop()
     communicate();
 
     // Testing procedure
-    if (controller_mode == TEST)
+    if (controller_mode == WAIT)
     {
         testLedcube(); // Test ledcube when not busy
     }
-
     // Present game result procedure
-    if (controller_mode == GAME_END)
+    else if (controller_mode == GAME_END)
     {
         presentGameResult(); // Visualize on ledcube result of game
     }
@@ -313,6 +310,7 @@ void loop()
     {
         blinkUnconfirmedLed();
     }
+    current_micros = micros();
     if (current_micros - previous_micros >= PERIOD)
     {
         previous_micros = current_micros;
@@ -320,9 +318,9 @@ void loop()
         switch (current_layer)
         {
         case LAYER0:
-            clrRegBit(&L3Port, L3PPin);
-            setLayer(current_layer);
-            setRegBit(&L0Port, L0PPin);
+            clrRegBit(&L3Port, L3PPin); // set off Layer 3
+            setLayer(current_layer);    // set Layer 0 columns
+            setRegBit(&L0Port, L0PPin); // set on Layer 0
             break;
 
         case LAYER1:
@@ -669,7 +667,7 @@ void react(void)
         }
         case EXIT_GAME_MSG:
         {
-            controller_mode = TEST;
+            controller_mode = WAIT;
             reset_trigger = true;
             break;
         }
@@ -687,14 +685,14 @@ void react(void)
             reset_trigger = true;
             break;
         case EXIT_GAME_MSG:
-            controller_mode = TEST;
+            controller_mode = WAIT;
             reset_trigger = true;
             break;
         default:
             break;
         }
     }
-    else if (controller_mode == TEST)
+    else if (controller_mode == WAIT)
     {
         switch (received_msg_type)
         {
@@ -1049,7 +1047,7 @@ void presentGameResult(void)
 }
 
 // Visualize who is a Winner and the line which made him win
-void presentWinner(uint8_t color)
+void -(uint8_t color)
 {
     if (animation_counter3 > 0)
     {
