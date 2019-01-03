@@ -8,4 +8,4 @@ Users play with use of android app communicating with led cube controller over B
 
 CONTENTS:
  - arduino firmware files,
- - android app files.
+ - android app MIT App Inventor 2 project file.
