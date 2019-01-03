@@ -1053,11 +1053,6 @@ void presentWinner(uint8_t color)
     {
         if (animation_counter1 > ANIM_SUBPERIOD_1)
         {
-            if (animation_counter3 == PRESENT_WINNING_LINE_DURATION)
-            {
-                clearLedcube();
-            }
-
             animation_counter1 = 0;
 
             setLed(winning_leds[animation_iterator2].color, winning_leds[animation_iterator2].layer, winning_leds[animation_iterator2].column);
@@ -1080,6 +1075,7 @@ void presentWinner(uint8_t color)
         if (--animation_counter3 == 0)
         {
             go_up = true;
+            clearLedcube();
         }
     }
     else
