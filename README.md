@@ -1,4 +1,4 @@
-# 3d_noughts_and_crosses
+# 3D Noughts And Crosses on Arduino+LEDCube4x4x4
 STATUS: Finished
 
 DESCRIPTION:
