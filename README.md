@@ -15,3 +15,4 @@ Some images of constructed controller board, LED cube and app:
 - ![ledcube](https://user-images.githubusercontent.com/43730948/160214873-4da97b2e-2d5e-4119-9f47-c1a870f3df76.jpg)
 - ![app1](https://user-images.githubusercontent.com/43730948/160214878-c71dcdf1-2943-47ea-8c20-ddb3c2511df2.png)
 - ![app2](https://user-images.githubusercontent.com/43730948/160215259-6415e702-27a0-4571-998c-cac66b56dc7c.png)
+- ![rgb3d_system](https://user-images.githubusercontent.com/43730948/173565201-96dc5623-3f65-4ee9-93d0-13e5f1e7c692.jpg)
